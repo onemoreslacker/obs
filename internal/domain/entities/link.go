@@ -1,6 +1,8 @@
 package entities
 
 // Link represents tracked resource link.
+//
+//nolint:revive,stylecheck // Generated code cannot be edited.
 type Link struct {
 	Filters *[]string
 	Id      *int64

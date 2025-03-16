@@ -15,6 +15,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	}
 }
 
+//nolint:unparam // Various response will be added.
 func respondWithError(w http.ResponseWriter, code int, msg, description string) {
 	err := ApiErrorResponse{
 		Description:  &description,
