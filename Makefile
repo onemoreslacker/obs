@@ -3,18 +3,45 @@ COVERAGE_FILE ?= coverage.out
 .PHONY: build
 build: build_bot build_scrapper
 
+.PHONY: run
+run: build
+	@echo "Запуск таргетов bot и scrapper"
+	@rm -f .service.pids
+	@./bin/bot & echo $$! > .service.pids
+	@./bin/scrapper & echo $$! >> .service.pids
+
+.PHONY: stop
+stop:
+	@if [ -f .service.pids ]; then \
+		echo "Остановка таргетов..."; \
+		kill $$(cat .service.pids) 2> /dev/null || true; \
+		echo "Тартеты остановлены!"; \
+		rm -f .service.pids; \
+	else \
+		echo "Нет запущенных таргетов."; \
+	fi 
+
 .PHONY: build_bot
 build_bot:
 	@echo "Выполняется go build для таргета bot"
-	@mkdir -p .bin
+	@mkdir -p ./bin
 	@go build -o ./bin/bot ./cmd/bot
 
 .PHONY: build_scrapper
 build_scrapper:
 	@echo "Выполняется go build для таргета scrapper"
-	@mkdir -p .bin
+	@mkdir -p ./bin
 	@go build -o ./bin/scrapper ./cmd/scrapper
 
+.PHONY: run_bot
+run_bot: build_bot
+	@echo "Запуск таргета bot"
+	@./bin/bot
+
+.PHONY: run_scrapper
+run_scrapper:
+	@echo "Запуск таргета scrapper"
+	@./bin/scrapper
 
 ## test: run all tests
 .PHONY: test
@@ -61,4 +88,4 @@ generate_openapi:
 
 .PHONY: clean
 clean:
-	@rm -rf./bin
+	@rm -rf ./bin
