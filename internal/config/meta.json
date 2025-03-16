@@ -1,0 +1,80 @@
+{
+  "fails": {
+    "list": "⛔ Failed to get the list of tracked links.",
+    "untrack": "⛔ Failed to untrack the provided link.",
+    "cancel": "❕ You are already in menu!",
+    "track": "⛔ Failed to track the provided link.",
+    "registration": "❕ You are already registered!",
+    "unauthorized": "❗ Please, register with /start command =)",
+    "unknown": "⛔` Unknown command. You can view the available commands by entering /help command",
+    "ack": "❕ Nothing to confirm."
+  },
+  "commands": {
+    "help": "/help",
+    "track": "/track", 
+    "untrack": "/untrack",
+    "list": "/list",
+    "cancel": "/cancel",
+    "start": "/start"
+  },
+  "descriptions": [
+    {
+      "name": "/start",
+      "description": "registrates the user"
+    },
+    {
+      "name": "/help",
+      "description": "prints the list of available commands with descriptio"
+    },
+    {
+      "name": "/track",
+      "description": "begin the process of adding the provided link"
+    },
+    {
+      "name": "/untrack",
+      "description": "untracks the provided link"
+    },
+    {
+      "name": "/list",
+      "description": "prints the list of a tracking links"
+    },
+    {
+      "name": "/cancel",
+      "description": "return the user to the menu"
+    }
+  ],
+  "replies": {
+    "registration": "👋 Hi and welcome! I'm Go Track and I'll be you link manager =) You can view the list of available commands by pressing /help.",
+    "track": "❕ Please, enter the tracking link! (press /cancel to quit)",
+    "untracked": "🔕 This link is longer being track!",
+    "untrack": "❕ Please, enter the link you want to untrack! (press /cancel to quit)",
+    "tags":  "❕ Please, enter link tags separated by space. (press /cancel to quit)",
+    "filters": "❕ Please, enter link filters as filter:value. (press /cancel to quit)",
+    "cancel": "🔙 Back to the menu!",
+    "tracking": "🔔 This link is now being track!",
+    "tags_ack": "❔ Do you want to specify tags? (press /cancel to quit)",
+    "filters_ack": "❔ Do you want to specify filters? (press /cancel to quit)"
+  },
+  "manuals": {
+    "link": "⚠️ Invalid URL. Please enter a valid link (e.g. https://github.com/golang/go).",
+    "tags": "⚠️ Invalid tags. Use spaces to separate (e.g. 'work hobby').",
+    "filters": "⚠️ Invalid format. Use 'filter:value' (e.g. 'user:dummy').",
+    "acks": "⚠️ Invalid format. yes/no was expected."
+  },
+  "spans": {
+    "track": 5,
+    "untrack": 1,
+    "list": 4
+  },
+  "services": {
+    "github": "github",
+    "stackoverflow": "stackoverflow",
+    "github_host": "api.github.com",
+    "github_base": "repos",
+    "stackoverflow_host": "api.stackexchange.com",
+    "stackoverflow_base": "answers"
+  },
+  "updates": {
+    "plug": "🆕 New link activity!"
+  }
+}
