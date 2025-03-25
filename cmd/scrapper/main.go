@@ -10,15 +10,24 @@ import (
 func main() {
 	cfg, err := config.MustLoad()
 	if err != nil {
-		slog.Error(err.Error())
+		slog.Error(
+			"config init error",
+			slog.String("msg", err.Error()),
+		)
 	}
 
 	service, err := scrapperservice.New(cfg)
 	if err != nil {
-		slog.Error(err.Error())
+		slog.Error(
+			"scrapper init error",
+			slog.String("msg", err.Error()),
+		)
 	}
 
 	if err := service.Run(); err != nil {
-		slog.Error(err.Error())
+		slog.Error(
+			"scrapper service error",
+			slog.String("msg", err.Error()),
+		)
 	}
 }

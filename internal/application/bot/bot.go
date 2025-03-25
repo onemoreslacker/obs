@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"log/slog"
 	"net"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
@@ -29,7 +30,7 @@ func New(tgbot TelegramBotAPI, cfg *config.Config) (*Bot, error) {
 	}, nil
 }
 
-func (b *Bot) Run() error {
+func (b *Bot) Run() {
 	updates := b.configureUpdates()
 
 	for update := range updates {
@@ -41,16 +42,20 @@ func (b *Bot) Run() error {
 
 		if query != nil {
 			if err := b.QueryHandler(query); err != nil {
-				return err
+				slog.Info(
+					"bot error",
+					"msg", err.Error(),
+				)
 			}
 		} else {
 			if err := b.MessageHandler(msg.Chat.ID, msg.Text); err != nil {
-				return err
+				slog.Warn(
+					"bot error",
+					"msg", err.Error(),
+				)
 			}
 		}
 	}
-
-	return nil
 }
 
 //go:generate mockery --name=TelegramBotAPI --structname=MockTeletramBotAPI --filename=mock_telegram_bot_api_test.go --outpkg=bot_test --output=.

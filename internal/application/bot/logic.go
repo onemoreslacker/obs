@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/commands"
@@ -86,9 +87,18 @@ func (b *Bot) commandTermination(chatID int64) error {
 }
 
 func (b *Bot) executeCommand(chatID int64, handler entities.Handler) error {
-	res, err := b.currentCommand.Request()
+	slog.Info(
+		"bot requests scrapper",
+		slog.String("cmd", b.currentCommand.Name()),
+	)
 
+	res, err := b.currentCommand.Request()
 	if err != nil {
+		slog.Error(
+			"invalid scrapper response",
+			slog.String("msg", err.Error()),
+		)
+
 		if _, err := b.tgb.Send(tgbotapi.NewMessage(chatID, handler.FailMsg)); err != nil {
 			return err
 		}
@@ -108,6 +118,12 @@ func (b *Bot) executeCommand(chatID int64, handler entities.Handler) error {
 	} else {
 		msg = handler.SuccessMsg
 	}
+
+	slog.Info(
+		"bot command verdict",
+		"msg", msg,
+		"cmd", b.currentCommand.Name(),
+	)
 
 	if _, err := b.tgb.Send(tgbotapi.NewMessage(chatID, msg)); err != nil {
 		return err

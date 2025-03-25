@@ -22,7 +22,7 @@ func (s *Scrapper) scrapeUpdates() error {
 		}
 
 		slog.Info(
-			"Starting updates collection",
+			"starting updates collection",
 			"total_chats", len(chatIDs),
 		)
 

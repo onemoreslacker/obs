@@ -62,11 +62,12 @@ func (s *Scrapper) Run() error {
 		gocron.WithEventListeners(
 			gocron.AfterJobRunsWithError(
 				func(jobID uuid.UUID, jobName string, err error) {
-					slog.Info(
-						"Job had an error",
-						"job_id", jobID.String(),
-						"job_name", jobName,
-						"error", err.Error())
+					slog.Error(
+						"job error",
+						slog.String("msg", err.Error()),
+						slog.String("job_id", jobID.String()),
+						slog.String("job_name", jobName),
+					)
 				},
 			),
 		),

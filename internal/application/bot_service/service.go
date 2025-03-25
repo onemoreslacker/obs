@@ -57,7 +57,6 @@ func New(cfg *config.Config) (*BotService, error) {
 
 func (s *BotService) Run() error {
 	srvErr := make(chan error, 1)
-	botErr := make(chan error, 1)
 
 	go func() {
 		if err := s.srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
@@ -66,9 +65,7 @@ func (s *BotService) Run() error {
 	}()
 
 	go func() {
-		if err := s.bt.Run(); err != nil {
-			botErr <- err
-		}
+		s.bt.Run()
 	}()
 
 	stop := make(chan os.Signal, 1)
@@ -76,19 +73,14 @@ func (s *BotService) Run() error {
 
 	select {
 	case err := <-srvErr:
-		slog.Info(
-			"Server error",
-			"error", err.Error(),
-		)
-	case err := <-botErr:
-		slog.Info(
-			"Bot error",
-			"error", err.Error(),
+		slog.Error(
+			"server error",
+			slog.String("error", err.Error()),
 		)
 	case sig := <-stop:
 		slog.Info(
-			"Received shutdown signal",
-			"signal", sig,
+			"received shutdown signal",
+			slog.String("signal", sig.String()),
 		)
 	}
 

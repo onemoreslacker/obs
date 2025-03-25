@@ -60,19 +60,19 @@ func (s *ScrapperService) Run() error {
 
 	select {
 	case err := <-srvErr:
-		slog.Info(
-			"Server error",
-			"error", err.Error(),
+		slog.Error(
+			"server error",
+			slog.String("msg", err.Error()),
 		)
 	case err := <-scrapperErr:
-		slog.Info(
-			"Scrapper error",
-			"error", err.Error(),
+		slog.Error(
+			"scrapper error",
+			slog.String("msg", err.Error()),
 		)
 	case sig := <-stop:
 		slog.Info(
-			"Received shutdown signal",
-			"signal", sig,
+			"received shutdown signal",
+			slog.String("signal", sig.String()),
 		)
 	}
 
