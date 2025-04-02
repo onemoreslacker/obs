@@ -49,12 +49,10 @@ func (c *Client) buildStackOverflowAPIURL(link string) (string, error) {
 		return "", err
 	}
 
-	u.Host = c.StackOverflowHost
-
 	parts := strings.Split(u.Path, "/")
 	parts = parts[:len(parts)-1]
 
-	cutted := path.Join(strings.Join(parts, "/"), c.StackOverflowBasePath)
+	cutted := path.Join(strings.Join(parts, "/"), StackOverflowBasePath)
 	u.Path = cutted
 
 	query := u.Query()

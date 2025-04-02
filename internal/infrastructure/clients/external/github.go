@@ -47,8 +47,8 @@ func (c *Client) buildGitHubAPIURL(link string) (string, error) {
 		return "", err
 	}
 
-	u.Host = c.GitHubHost
-	u.Path = path.Join(c.GitHubBasePath, u.Path)
+	u.Host = GitHubHost
+	u.Path = path.Join(GitHubBasePath, u.Path)
 
 	return u.String(), nil
 }
