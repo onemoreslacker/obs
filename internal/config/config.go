@@ -1,27 +1,21 @@
 package config
 
 import (
-	"embed"
-	"encoding/json"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/viper"
 )
 
-//go:embed meta.json
-var replyFS embed.FS
-
 type Config struct {
 	Host         string `mapstructure:"HOST"`
 	BotPort      string `mapstructure:"BOT_PORT"`
 	ScrapperPort string `mapstructure:"SCRAPPER_PORT"`
 	BotToken     string `mapstructure:"BOT_TOKEN"`
-	Meta         *Meta
 }
 
-func MustLoad() (*Config, error) {
-	envPath, err := findEnvFile(name)
+func Load() (*Config, error) {
+	envPath, err := findEnvFile(Name)
 	if err != nil {
 		return nil, err
 	}
@@ -38,19 +32,6 @@ func MustLoad() (*Config, error) {
 	if err := viper.Unmarshal(config); err != nil {
 		return nil, err
 	}
-
-	repliesFile, err := replyFS.ReadFile(repliesName)
-	if err != nil {
-		return nil, err
-	}
-
-	meta := &Meta{}
-
-	if err := json.Unmarshal(repliesFile, meta); err != nil {
-		return nil, err
-	}
-
-	config.Meta = meta
 
 	return config, nil
 }
@@ -79,6 +60,35 @@ func findEnvFile(name string) (string, error) {
 }
 
 const (
-	name        = ".env"
-	repliesName = "meta.json"
+	Name = ".env"
 )
+
+var Descriptions = []struct {
+	Name        string
+	Description string
+}{
+	{
+		Name:        "/start",
+		Description: "registrates the user",
+	},
+	{
+		Name:        "/help",
+		Description: "prints the list of available commands with description",
+	},
+	{
+		Name:        "/track",
+		Description: "starts the process of adding the link",
+	},
+	{
+		Name:        "/untrack",
+		Description: "untracks the link",
+	},
+	{
+		Name:        "/list",
+		Description: "prints the list of a tracking links",
+	},
+	{
+		Name:        "/cancel",
+		Description: "return the user to the menu",
+	},
+}
