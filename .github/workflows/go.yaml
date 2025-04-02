@@ -1,33 +1,41 @@
 name: Go
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "stable"
+          - name: 'Create .env file'
+            run: |
+              touch .env
+              echo HOST=localhost >> .env
+              echo SCRAPPER_PORT=8080 >> .env
+              echo BOT_PORT=8081 >> .env
+              cat .env
 
-      - name: Build
-        run: |
-          go mod tidy
-          go build -v ./...
+          - name: Set up Go
+            uses: actions/setup-go@v5
+            with:
+              go-version: "stable"
 
-      - name: Lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
+          - name: Build
+            run: |
+              go mod tidy
+              go build -v ./...
 
-      - name: Test
-        run: |
-          go mod tidy
-          go test -v -race -coverpkg=./... ./...
+          - name: Lint
+            uses: golangci/golangci-lint-action@v4
+            with:
+              version: latest
+
+          - name: Test
+            run: |
+              go mod tidy
+              go test -v -race -coverpkg=./... ./...
