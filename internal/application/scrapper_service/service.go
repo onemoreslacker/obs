@@ -11,8 +11,8 @@ import (
 	"time"
 
 	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/services/scrapper"
 	scrapperserver "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/scrapper_server"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/storage"
 )
@@ -42,7 +42,7 @@ func (s *ScrapperService) Run() error {
 	srvErr := make(chan error, 1)
 
 	go func() {
-		if err := s.srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			srvErr <- err
 		}
 	}()
@@ -63,16 +63,19 @@ func (s *ScrapperService) Run() error {
 		slog.Error(
 			"server error",
 			slog.String("msg", err.Error()),
+			slog.String("service", "scrapper"),
 		)
 	case err := <-scrapperErr:
 		slog.Error(
 			"scrapper error",
 			slog.String("msg", err.Error()),
+			slog.String("service", "scrapper"),
 		)
 	case sig := <-stop:
 		slog.Info(
 			"received shutdown signal",
 			slog.String("signal", sig.String()),
+			slog.String("service", "scrapper"),
 		)
 	}
 

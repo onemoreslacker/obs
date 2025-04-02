@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	cfg, err := config.MustLoad()
+	cfg, err := config.Load()
 	if err != nil {
 		slog.Error(
 			"config init error",
