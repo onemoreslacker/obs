@@ -23,7 +23,8 @@ func (s *Scrapper) scrapeUpdates() error {
 
 		slog.Info(
 			"starting updates collection",
-			"total_chats", len(chatIDs),
+			slog.Int("total_chats", len(chatIDs)),
+			slog.String("service", "scrapper"),
 		)
 
 		if err := s.collectUpdates(links, updates, chatID); err != nil {
@@ -33,7 +34,7 @@ func (s *Scrapper) scrapeUpdates() error {
 
 	for link, chats := range updates {
 		update := botclient.PostUpdatesJSONRequestBody{
-			Description: &s.cfg.Meta.Updates.Plug,
+			Description: &Updates,
 			TgChatIds:   &chats,
 			Url:         &link,
 		}
@@ -59,7 +60,7 @@ func (s *Scrapper) collectUpdates(links []entities.Link, updates map[string][]in
 		}
 
 		switch service {
-		case s.cfg.Meta.Services.GitHub:
+		case "github":
 			updated, err := s.checkForUpdatesGithub(l)
 			if err != nil {
 				return err
@@ -68,7 +69,7 @@ func (s *Scrapper) collectUpdates(links []entities.Link, updates map[string][]in
 			if !updated {
 				continue
 			}
-		case s.cfg.Meta.Services.StackOverflow:
+		case "stackoverflow":
 			updated, err := s.checkForUpdatesStackOverflow(l)
 			if err != nil {
 				return err
@@ -119,12 +120,12 @@ func (s *Scrapper) identifyService(link string) (string, error) {
 		return "", err
 	}
 
-	if strings.Contains(u.Host, s.cfg.Meta.Services.GitHub) {
-		return s.cfg.Meta.Services.GitHub, nil
+	if strings.Contains(u.Host, "github") {
+		return "github", nil
 	}
 
-	if strings.Contains(u.Host, s.cfg.Meta.Services.StackOverflow) {
-		return s.cfg.Meta.Services.StackOverflow, nil
+	if strings.Contains(u.Host, "stackoverflow") {
+		return "stackoverflow", nil
 	}
 
 	return "", ErrUnknownService
@@ -145,3 +146,7 @@ func getCutoff() time.Time {
 
 	return cutoff
 }
+
+var (
+	Updates = "🆕 New link activity!"
+)
