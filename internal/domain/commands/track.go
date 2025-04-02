@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 )
@@ -22,15 +21,14 @@ type CommandTrack struct {
 func NewCommandTrack(
 	chatID int64,
 	client scrcl.ClientInterface,
-	cfg *config.Config,
 ) *CommandTrack {
 	return &CommandTrack{
 		traits: entities.NewTraits(
-			cfg.Meta.Spans.Track,
+			TrackSpan,
 			chatID,
-			cfg.Meta.Commands.Track,
+			Track,
 		),
-		pipeline:       createTrackStages(cfg),
+		pipeline:       createTrackStages(),
 		link:           entities.Link{Id: &chatID},
 		scrapperClient: client,
 	}
@@ -84,7 +82,7 @@ func (c *CommandTrack) Done() bool {
 	return c.traits.Stage == c.traits.Span
 }
 
-func (c *CommandTrack) Request() (any, error) {
+func (c *CommandTrack) Request() string {
 	params := &scrcl.PostLinksParams{
 		TgChatId: c.traits.ChatID,
 	}
@@ -98,47 +96,56 @@ func (c *CommandTrack) Request() (any, error) {
 	resp, err := c.scrapperClient.PostLinks(
 		context.Background(), params, body)
 	if err != nil {
-		return nil, err
+		return FailedTrack
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, ErrFailedToTrack
+	if resp.StatusCode == http.StatusConflict {
+		return LinkAlreadyTracked
 	}
 
-	return nil, nil
+	return SuccessfulTrack
 }
 
 func (c *CommandTrack) Name() string {
 	return c.traits.Name
 }
 
-func createTrackStages(cfg *config.Config) []*entities.Stage {
+func createTrackStages() []*entities.Stage {
 	return []*entities.Stage{
 		entities.NewStage(
-			cfg.Meta.Replies.Track,
-			cfg.Meta.Manuals.Link,
+			TrackRequest,
+			LinkManual,
 			ValidateLink,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.TagsAck,
-			cfg.Meta.Manuals.Acks,
+			TagsAck,
+			TagsManual,
 			validateAck,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.Tags,
-			cfg.Meta.Manuals.Tags,
+			TagsRequest,
+			TagsManual,
 			validateTags,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.FiltersAck,
-			cfg.Meta.Manuals.Acks,
+			FiltersAck,
+			AcksManual,
 			validateAck,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.Filters,
-			cfg.Meta.Manuals.Filters,
+			FiltersRequest,
+			FiltersManual,
 			validateFilters,
 		),
 	}
 }
+
+const (
+	Track              = "track"
+	TrackSpan          = 5
+	TrackRequest       = "✨ Please, enter the link you want to track! (press /cancel to quit)"
+	FailedTrack        = "💥 Failed to track link!"
+	LinkAlreadyTracked = "⚡️ This link is already being tracked!"
+	SuccessfulTrack    = "✨ This link is now being tracked!"
+)

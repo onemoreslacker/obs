@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 )
@@ -24,15 +23,14 @@ type CommandList struct {
 func NewCommandList(
 	chatID int64,
 	client scrcl.ClientInterface,
-	cfg *config.Config,
 ) *CommandList {
 	return &CommandList{
 		traits: entities.NewTraits(
-			cfg.Meta.Spans.List,
+			listSpan,
 			chatID,
-			cfg.Meta.Commands.List,
+			list,
 		),
-		pipeline:       createListStages(cfg),
+		pipeline:       createListStages(),
 		scrapperClient: client,
 	}
 }
@@ -82,25 +80,35 @@ func (c *CommandList) Done() bool {
 	return c.traits.Stage == c.traits.Span
 }
 
-func (c *CommandList) Request() (any, error) {
+func (c *CommandList) Request() string {
 	params := &scrcl.GetLinksParams{
 		TgChatId: c.traits.ChatID,
 	}
 
 	resp, err := c.scrapperClient.GetLinks(context.Background(), params)
 	if err != nil {
-		return nil, err
+		return failedList
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, ErrLinksResponseFailed
+		var respErr scrcl.ApiErrorResponse
+
+		if err := json.NewDecoder(resp.Body).Decode(&respErr); err != nil {
+			return failedList
+		}
+
+		if respErr.Description == nil {
+			return failedList
+		}
+
+		return *respErr.Description
 	}
 
 	var list scrcl.ListLinksResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, err
+		return failedList
 	}
 
 	sievedLinks := make([]entities.Link, 0, *list.Size)
@@ -113,37 +121,44 @@ func (c *CommandList) Request() (any, error) {
 	}
 
 	if len(sievedLinks) == 0 {
-		return nil, ErrEmptyList
+		return emptyList
 	}
 
-	return sievedLinks, nil
+	return constructListMessage(sievedLinks)
 }
 
 func (c *CommandList) Name() string {
 	return c.traits.Name
 }
 
-func createListStages(cfg *config.Config) []*entities.Stage {
+func createListStages() []*entities.Stage {
 	return []*entities.Stage{
 		entities.NewStage(
-			cfg.Meta.Replies.TagsAck,
-			cfg.Meta.Manuals.Acks,
+			TagsAck,
+			AcksManual,
 			validateAck,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.Tags,
-			cfg.Meta.Manuals.Tags,
+			TagsRequest,
+			TagsManual,
 			validateTags,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.FiltersAck,
-			cfg.Meta.Manuals.Acks,
+			FiltersAck,
+			AcksManual,
 			validateAck,
 		),
 		entities.NewStage(
-			cfg.Meta.Replies.Filters,
-			cfg.Meta.Manuals.Filters,
+			FiltersRequest,
+			FiltersManual,
 			validateFilters,
 		),
 	}
 }
+
+const (
+	list       = "list"
+	listSpan   = 4
+	failedList = "💥 Failed to get the list of tracked links."
+	emptyList  = "⚡️ Currently, there are no links being tracked!"
+)

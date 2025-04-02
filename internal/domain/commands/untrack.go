@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 )
@@ -21,15 +20,14 @@ type CommandUntrack struct {
 func NewCommandUntrack(
 	chatID int64,
 	client scrcl.ClientInterface,
-	cfg *config.Config,
 ) *CommandUntrack {
 	return &CommandUntrack{
 		traits: entities.NewTraits(
-			cfg.Meta.Spans.Untrack,
+			UntrackSpan,
 			chatID,
-			cfg.Meta.Commands.Untrack,
+			Untrack,
 		),
-		pipeline:       createUntrackStages(cfg),
+		pipeline:       createUntrackStages(),
 		url:            entities.URL{},
 		scrapperClient: client,
 	}
@@ -64,7 +62,7 @@ func (c *CommandUntrack) Done() bool {
 	return c.traits.Stage == c.traits.Span
 }
 
-func (c *CommandUntrack) Request() (any, error) {
+func (c *CommandUntrack) Request() string {
 	params := &scrcl.DeleteLinksParams{
 		TgChatId: c.traits.ChatID,
 	}
@@ -76,27 +74,36 @@ func (c *CommandUntrack) Request() (any, error) {
 	resp, err := c.scrapperClient.DeleteLinks(
 		context.Background(), params, body)
 	if err != nil {
-		return nil, err
+		return FailedUntrack
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, ErrFailedToUntrack
+	if resp.StatusCode != http.StatusConflict {
+		return LinkNotYetTracked
 	}
 
-	return nil, nil
+	return SuccessfulUntrack
 }
 
 func (c *CommandUntrack) Name() string {
 	return c.traits.Name
 }
 
-func createUntrackStages(cfg *config.Config) []*entities.Stage {
+func createUntrackStages() []*entities.Stage {
 	return []*entities.Stage{
 		entities.NewStage(
-			cfg.Meta.Replies.Untrack,
-			cfg.Meta.Manuals.Link,
+			UntrackRequest,
+			LinkManual,
 			ValidateLink,
 		),
 	}
 }
+
+const (
+	Untrack           = "untrack"
+	UntrackSpan       = 1
+	UntrackRequest    = "✨ Please, enter the link you want to untrack! (press /cancel to quit)"
+	FailedUntrack     = "💥 Failed to untrack provided link."
+	LinkNotYetTracked = "⚡️ This link is not yet being tracked!"
+	SuccessfulUntrack = "✨ This link is no longer being tracked!"
+)
