@@ -1,11 +1,10 @@
 package bot
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -23,29 +22,19 @@ func (b *Bot) configureUpdates() tgbotapi.UpdatesChannel {
 }
 
 // helpCommand constructs available commands message.
-func (b *Bot) constructHelpMessage() string {
+func constructHelpMessage() string {
 	var msg string
-	for _, cmd := range b.cfg.Meta.Descriptions {
+	for _, cmd := range config.Descriptions {
 		msg += fmt.Sprintf("%s - %s\n", cmd.Name, cmd.Description)
 	}
 
 	return msg
 }
 
-func ConstructListMessage(links []entities.Link) string {
-	var buf bytes.Buffer
-
-	for i, link := range links {
-		fmt.Fprintf(&buf, "%d. %s\n", i+1, *link.Url)
-	}
-
-	return buf.String()
-}
-
-func (b *Bot) configureReply(chatID int64) tgbotapi.MessageConfig {
+func (b *Bot) configureReply(msg *tgbotapi.Message) tgbotapi.MessageConfig {
 	content, keyboard := b.currentCommand.Stage()
 
-	reply := tgbotapi.NewMessage(chatID, content)
+	reply := tgbotapi.NewMessage(msg.Chat.ID, content)
 	if keyboard {
 		reply.ReplyMarkup = inlineKeyboard
 	}
@@ -55,7 +44,7 @@ func (b *Bot) configureReply(chatID int64) tgbotapi.MessageConfig {
 
 func (b *Bot) withAuthorization(id int64, next func() string) string {
 	if err := b.isRegistered(id); err != nil {
-		return b.cfg.Meta.Fails.Unauthorized
+		return Unregistered
 	}
 
 	return next()
@@ -66,4 +55,8 @@ var inlineKeyboard = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardButtonData("Yes", "Yes"),
 		tgbotapi.NewInlineKeyboardButtonData("No", "No"),
 	),
+)
+
+const (
+	Unregistered = "⚡ You are not registered! Press /start to register!"
 )
