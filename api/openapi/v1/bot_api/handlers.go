@@ -10,7 +10,11 @@ import (
 )
 
 type API struct {
-	tc *tgbotapi.BotAPI
+	tc UpdateSender
+}
+
+type UpdateSender interface {
+	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
 }
 
 func New(client *tgbotapi.BotAPI) *API {
