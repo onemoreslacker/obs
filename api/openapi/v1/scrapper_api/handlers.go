@@ -7,15 +7,21 @@ import (
 	"net/http"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/repositories"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/storage"
 )
 
 type API struct {
-	links repositories.LinksRepository
+	links linksRepository
 }
 
-func New(links repositories.LinksRepository) *API {
+type linksRepository interface {
+	AddChat(id int64) error
+	DeleteChat(id int64) error
+	AddLink(id int64, link entities.Link) error
+	GetLinks(id int64) ([]entities.Link, error)
+	DeleteLink(id int64, url string) (entities.Link, error)
+}
+
+func New(links linksRepository) *API {
 	return &API{
 		links: links,
 	}
@@ -35,11 +41,9 @@ func (a *API) PostTgChatId(w http.ResponseWriter, _ *http.Request, id int64) {
 //nolint:revive,stylecheck // Generated code cannot be edited.
 func (a *API) GetTgChatId(w http.ResponseWriter, _ *http.Request, id int64) {
 	if _, err := a.links.GetLinks(id); err != nil {
-		if errors.Is(err, storage.ErrChatNotFound) {
-			respondWithError(w, http.StatusBadRequest,
-				err.Error(), ErrInvalidBody.Error())
-			return
-		}
+		respondWithError(w, http.StatusBadRequest,
+			err.Error(), ErrInvalidBody.Error())
+		return
 	}
 
 	respondWithJSON(w, http.StatusOK, http.NoBody)
@@ -67,7 +71,8 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 		return
 	}
 
-	if model.Link == nil {
+	// Лучше все-таки было отдельно хэндлить?
+	if model.Link == nil || model.Tags == nil || model.Filters == nil {
 		respondWithError(w, http.StatusBadRequest,
 			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())
 		return
@@ -75,22 +80,7 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 
 	url, tags, filters := *model.Link, *model.Tags, *model.Filters
 
-	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest,
-			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())
-		return
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest,
-			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
+	if !checkResourceAvailability(url) {
 		respondWithError(w, http.StatusBadRequest,
 			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())
 		return
@@ -98,11 +88,18 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 
 	link := entities.NewLink(rand.Int64(), url, tags, filters) //nolint:gosec // Temporary solution
 
-	// NOTE: adjuct oapi config? (only 200 and 400
-	// responses are expected currently)
 	if err := a.links.AddLink(id, link); err != nil {
-		respondWithError(w, http.StatusInternalServerError,
-			ErrAddLinkFailed.msg, ErrAddLinkFailed.msg)
+		var status int
+
+		if errors.Is(err, ErrLinkAlreadyExists) {
+			status = http.StatusConflict
+		} else {
+			status = http.StatusBadRequest
+		}
+
+		respondWithError(w, status, err.Error(),
+			ErrAddLinkFailed.Error())
+
 		return
 	}
 
@@ -151,8 +148,17 @@ func (a *API) DeleteLinks(w http.ResponseWriter, r *http.Request, params DeleteL
 
 	link, err := a.links.DeleteLink(id, *model.Link)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest,
-			ErrDeleteLinkFailed.Error(), ErrDeleteLinkFailed.Error())
+		var status int
+
+		if errors.Is(err, ErrLinkAlreadyExists) {
+			status = http.StatusConflict
+		} else {
+			status = http.StatusBadRequest
+		}
+
+		respondWithError(w, status, err.Error(),
+			ErrAddLinkFailed.Error())
+
 		return
 	}
 

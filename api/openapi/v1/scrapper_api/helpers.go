@@ -24,3 +24,18 @@ func respondWithError(w http.ResponseWriter, code int, msg, description string) 
 
 	respondWithJSON(w, code, err)
 }
+
+func checkResourceAvailability(url string) bool {
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return false
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
+}
