@@ -11,8 +11,8 @@ import (
 	"time"
 
 	botapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/bot_api"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/services/bot"
 	srvb "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/bot_server"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -28,8 +28,8 @@ func New(cfg *config.Config) (*BotService, error) {
 		return nil, err
 	}
 
-	commands := make([]tgbotapi.BotCommand, len(cfg.Meta.Descriptions))
-	for i, data := range cfg.Meta.Descriptions {
+	commands := make([]tgbotapi.BotCommand, len(config.Descriptions))
+	for i, data := range config.Descriptions {
 		commands[i] = tgbotapi.BotCommand{
 			Command:     data.Name,
 			Description: data.Description,
@@ -56,10 +56,10 @@ func New(cfg *config.Config) (*BotService, error) {
 }
 
 func (s *BotService) Run() error {
-	srvErr := make(chan error, 1)
+	srvErr := make(chan error)
 
 	go func() {
-		if err := s.srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			srvErr <- err
 		}
 	}()
@@ -76,11 +76,13 @@ func (s *BotService) Run() error {
 		slog.Error(
 			"server error",
 			slog.String("error", err.Error()),
+			slog.String("service", "bot"),
 		)
 	case sig := <-stop:
 		slog.Info(
 			"received shutdown signal",
 			slog.String("signal", sig.String()),
+			slog.String("service", "bot"),
 		)
 	}
 
