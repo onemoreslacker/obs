@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"log/slog"
 	"sync"
 
+	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 )
 
@@ -25,7 +27,7 @@ func (r *LinksRepository) AddChat(id int64) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.links[id]; exists {
-		return ErrChatAlreadyExists
+		return scrapperapi.ErrChatAlreadyExists
 	}
 
 	r.links[id] = make(map[string]entities.Link)
@@ -39,7 +41,7 @@ func (r *LinksRepository) DeleteChat(id int64) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.links[id]; !exists {
-		return ErrChatNotFound
+		return scrapperapi.ErrChatNotFound
 	}
 
 	delete(r.links, id)
@@ -54,11 +56,20 @@ func (r *LinksRepository) AddLink(id int64, link entities.Link) error {
 
 	entries, exists := r.links[id]
 	if !exists {
-		return ErrChatNotFound
+		return scrapperapi.ErrChatNotFound
 	}
 
+	if link.Url == nil {
+		return scrapperapi.ErrAddLinkInvalidLink
+	}
+
+	slog.Info(
+		"repository: add link",
+		slog.String("link", *link.Url),
+	)
+
 	if _, exists := entries[*link.Url]; exists {
-		return ErrLinkAlreadyExists
+		return scrapperapi.ErrLinkAlreadyExists
 	}
 
 	entries[*link.Url] = link
@@ -73,7 +84,7 @@ func (r *LinksRepository) GetLinks(id int64) (links []entities.Link, err error) 
 
 	entries, exists := r.links[id]
 	if !exists {
-		return nil, ErrChatNotFound
+		return nil, scrapperapi.ErrChatNotFound
 	}
 
 	links = make([]entities.Link, 0, len(entries))
@@ -92,13 +103,13 @@ func (r *LinksRepository) DeleteLink(id int64, url string) (link entities.Link, 
 
 	_, exists := r.links[id]
 	if !exists {
-		return entities.Link{}, ErrChatNotFound
+		return entities.Link{}, scrapperapi.ErrChatNotFound
 	}
 
 	entries := r.links[id]
 
 	if _, exists := entries[url]; !exists {
-		return entities.Link{}, ErrLinkNotFound
+		return entities.Link{}, scrapperapi.ErrLinkNotFound
 	}
 
 	link = entries[url]

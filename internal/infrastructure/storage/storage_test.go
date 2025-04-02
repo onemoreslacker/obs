@@ -4,6 +4,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/storage"
 	"github.com/stretchr/testify/require"
@@ -153,22 +154,22 @@ func TestDoubleInsertion(t *testing.T) {
 		"link with tags and filters": {
 			chatID: chatIDTagsFilters,
 			link:   entities.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
-			want:   storage.ErrLinkAlreadyExists,
+			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 		"link with tags": {
 			chatID: chatIDTags,
 			link:   entities.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
-			want:   storage.ErrLinkAlreadyExists,
+			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 		"link with filters": {
 			chatID: chatIDFilters,
 			link:   entities.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
-			want:   storage.ErrLinkAlreadyExists,
+			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 		"link without tags and filters": {
 			chatID: chatID,
 			link:   entities.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
-			want:   storage.ErrLinkAlreadyExists,
+			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 	}
 
@@ -183,7 +184,7 @@ func TestDoubleInsertion(t *testing.T) {
 			}
 
 			if err := repositories.AddLink(test.chatID, test.link); err != nil {
-				require.Equal(t, err, storage.ErrLinkAlreadyExists)
+				require.Equal(t, err, scrapperapi.ErrLinkAlreadyExists)
 			}
 		})
 	}
