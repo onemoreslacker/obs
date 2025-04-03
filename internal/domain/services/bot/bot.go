@@ -1,10 +1,11 @@
 package bot
 
 import (
+	"log/slog"
+
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"log/slog"
 )
 
 type Bot struct {
