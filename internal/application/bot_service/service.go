@@ -3,7 +3,9 @@ package botservice
 import (
 	"context"
 	"errors"
+	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -42,7 +44,12 @@ func New(cfg *config.Config) (*BotService, error) {
 		return nil, err
 	}
 
-	bt, err := bot.New(tgc, cfg)
+	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Host, cfg.ScrapperPort))
+	if err != nil {
+		return nil, err
+	}
+
+	bt, err := bot.New(client, tgc, cfg)
 	if err != nil {
 		return nil, err
 	}

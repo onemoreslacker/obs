@@ -1,12 +1,10 @@
 package bot
 
 import (
-	"log/slog"
-	"net"
-
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"log/slog"
 )
 
 type Bot struct {
@@ -31,14 +29,9 @@ type Command interface {
 	Name() string
 }
 
-func New(tgbot TgAPI, cfg *config.Config) (*Bot, error) {
-	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Host, cfg.ScrapperPort))
-	if err != nil {
-		return nil, err
-	}
-
+func New(client scrcl.ClientInterface, api TgAPI, cfg *config.Config) (*Bot, error) {
 	return &Bot{
-		tgb:            tgbot,
+		tgb:            api,
 		scrapperClient: client,
 		cfg:            cfg,
 	}, nil

@@ -35,10 +35,11 @@ func TestUnknownCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := NewMockTgAPI(t)
+			scrapperClient := NewMockScrapperClient(t)
 
 			cfg, _ := config.Load()
 
-			b, _ := bot.New(api, cfg)
+			b, _ := bot.New(scrapperClient, api, cfg)
 
 			reply := b.InitializeCommand(newTestCommand(tt.msg, tt.chatID))
 
