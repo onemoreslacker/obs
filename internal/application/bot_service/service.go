@@ -3,6 +3,7 @@ package botservice
 import (
 	"context"
 	"errors"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	botapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/bot_api"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/services/bot"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 	srvb "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/bot_server"
@@ -25,7 +25,7 @@ type BotService struct {
 }
 
 func New(cfg *config.Config) (*BotService, error) {
-	tgc, err := tgbotapi.NewBotAPI(cfg.BotToken)
+	tgc, err := tgbotapi.NewBotAPI(cfg.Secrets.BotToken)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func New(cfg *config.Config) (*BotService, error) {
 		return nil, err
 	}
 
-	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Host, cfg.ScrapperPort))
+	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Serving.Host, cfg.Serving.ScrapperPort))
 	if err != nil {
 		return nil, err
 	}

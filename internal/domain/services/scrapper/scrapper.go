@@ -1,11 +1,11 @@
 package scrapper
 
 import (
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"net"
 	"net/url"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 	botclient "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/bot"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/external"
@@ -29,7 +29,7 @@ type linkRepository interface {
 func New(cfg *config.Config, repository linkRepository) (*Scrapper, error) {
 	server := url.URL{
 		Scheme: "http",
-		Host:   net.JoinHostPort(cfg.Host, cfg.BotPort),
+		Host:   net.JoinHostPort(cfg.Serving.Host, cfg.Serving.BotPort),
 	}
 
 	client, err := botclient.NewClient(server.String())

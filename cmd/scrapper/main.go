@@ -1,11 +1,11 @@
 package main
 
 import (
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"os"
 
 	scrapperservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper_service"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 )
 
 func main() {
@@ -14,6 +14,7 @@ func main() {
 		slog.Error(
 			"config init error",
 			slog.String("msg", err.Error()),
+			slog.String("service", "cfg"),
 		)
 		os.Exit(1)
 	}
@@ -23,6 +24,7 @@ func main() {
 		slog.Error(
 			"scrapper init error",
 			slog.String("msg", err.Error()),
+			slog.String("service", "cfg"),
 		)
 		os.Exit(1)
 	}
@@ -31,6 +33,7 @@ func main() {
 		slog.Error(
 			"scrapper service error",
 			slog.String("msg", err.Error()),
+			slog.String("service", "cfg"),
 		)
 		os.Exit(1)
 	}

@@ -3,6 +3,7 @@ package scrapperservice
 import (
 	"context"
 	"errors"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/services/scrapper"
 	scrapperserver "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/scrapper_server"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/storage"

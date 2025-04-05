@@ -105,6 +105,10 @@ func (b *Bot) handleHelp(msg *tgbotapi.Message) tgbotapi.MessageConfig {
 func (b *Bot) handleStart(msg *tgbotapi.Message) tgbotapi.MessageConfig {
 	resp, err := b.scrapperClient.PostTgChatId(context.Background(), msg.Chat.ID)
 	if err != nil {
+		slog.Error(
+			"registration failed",
+			slog.String("msg", err.Error()),
+		)
 		if !errors.Is(err, scrapperapi.ErrChatAlreadyExists) {
 			return tgbotapi.NewMessage(msg.Chat.ID, FailedRegistration)
 		}

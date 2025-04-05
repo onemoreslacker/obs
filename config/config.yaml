@@ -1,0 +1,5 @@
+env: prod
+serving:
+    host: localhost
+    scrapper-port: 8080
+    bot-port: 8081

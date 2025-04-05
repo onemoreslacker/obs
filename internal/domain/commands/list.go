@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -90,6 +91,8 @@ func (c *CommandList) Request() string {
 		return failedList
 	}
 	defer resp.Body.Close()
+
+	log.Print(resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		var respErr scrcl.ApiErrorResponse

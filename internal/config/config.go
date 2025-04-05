@@ -1,67 +1,45 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
-
-	"github.com/spf13/viper"
+	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Host         string `mapstructure:"HOST"`
-	BotPort      string `mapstructure:"BOT_PORT"`
-	ScrapperPort string `mapstructure:"SCRAPPER_PORT"`
-	BotToken     string `mapstructure:"BOT_TOKEN"`
+	Secrets Secrets
+	Env     string  `yaml:"env" env-default:"local"`
+	Serving Serving `yaml:"serving"`
+}
+
+type Serving struct {
+	Host         string `yaml:"host" env-default:"localhost"`
+	ScrapperPort string `yaml:"scrapper_port" env-default:"8080"`
+	BotPort      string `yaml:"bot_port" env-default:"8081"`
+}
+
+type Secrets struct {
+	BotToken string `env:"BOT_TOKEN"`
 }
 
 func Load() (*Config, error) {
-	envPath, err := findEnvFile(Name)
-	if err != nil {
+	var cfg Config
+
+	if err := cleanenv.ReadConfig("config/config.yaml", &cfg); err != nil {
 		return nil, err
 	}
 
-	viper.SetConfigFile(envPath)
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
-	}
-
-	config := &Config{}
-
-	if err := viper.Unmarshal(config); err != nil {
-		return nil, err
-	}
-
-	return config, nil
-}
-
-func findEnvFile(name string) (string, error) {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		target := filepath.Join(currentDir, name)
-		if _, err := os.Stat(target); err == nil {
-			return target, nil
+	if cfg.Env == "local" {
+		if err := godotenv.Load(".env"); err != nil {
+			return nil, err
 		}
-
-		parentDir := filepath.Dir(currentDir)
-		if parentDir == currentDir {
-			break
-		}
-
-		currentDir = parentDir
 	}
 
-	return "", ErrFailedToFindEnv
-}
+	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		return nil, err
+	}
 
-const (
-	Name = ".env"
-)
+	return &cfg, nil
+}
 
 var Descriptions = []struct {
 	Name        string
