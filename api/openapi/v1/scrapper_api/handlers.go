@@ -71,7 +71,6 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 		return
 	}
 
-	// Лучше все-таки было отдельно хэндлить?
 	if model.Link == nil || model.Tags == nil || model.Filters == nil {
 		respondWithError(w, http.StatusBadRequest,
 			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())

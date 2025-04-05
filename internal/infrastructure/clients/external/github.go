@@ -13,7 +13,7 @@ type GitHubRepository struct {
 }
 
 func (c *Client) GetGitHubRepository(link string) (GitHubRepository, error) {
-	apiURL, err := c.buildGitHubAPIURL(link)
+	apiURL, err := buildGitHubAPIURL(link)
 	if err != nil {
 		return GitHubRepository{}, nil
 	}
@@ -41,10 +41,14 @@ func (c *Client) GetGitHubRepository(link string) (GitHubRepository, error) {
 	return repo, nil
 }
 
-func (c *Client) buildGitHubAPIURL(link string) (string, error) {
+func buildGitHubAPIURL(link string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
 		return "", err
+	}
+
+	if u.Scheme == "" {
+		u.Scheme = "https"
 	}
 
 	u.Host = GitHubHost

@@ -15,7 +15,7 @@ type StackOverflowAnswers struct {
 }
 
 func (c *Client) GetStackOverflowAnswers(link string) (StackOverflowAnswers, error) {
-	apiURL, err := c.buildStackOverflowAPIURL(link)
+	apiURL, err := buildStackOverflowAPIURL(link)
 	if err != nil {
 		return StackOverflowAnswers{}, err
 	}
@@ -43,17 +43,21 @@ func (c *Client) GetStackOverflowAnswers(link string) (StackOverflowAnswers, err
 	return answers, nil
 }
 
-func (c *Client) buildStackOverflowAPIURL(link string) (string, error) {
+func buildStackOverflowAPIURL(link string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
 		return "", err
 	}
 
+	if u.Scheme == "" {
+		u.Scheme = "https"
+	}
+
 	parts := strings.Split(u.Path, "/")
 	parts = parts[:len(parts)-1]
 
-	cutted := path.Join(strings.Join(parts, "/"), StackOverflowBasePath)
-	u.Path = cutted
+	cut := path.Join(strings.Join(parts, "/"), StackOverflowBasePath)
+	u.Path = cut
 
 	query := u.Query()
 	query.Set("order", "desc")

@@ -104,6 +104,10 @@ func (c *CommandTrack) Request() string {
 		return LinkAlreadyTracked
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return FailedTrack
+	}
+
 	return SuccessfulTrack
 }
 
