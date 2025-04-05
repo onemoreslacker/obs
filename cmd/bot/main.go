@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"os"
 
 	botservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot_service"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 )
 
 func main() {

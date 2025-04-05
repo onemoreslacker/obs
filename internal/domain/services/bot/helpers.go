@@ -2,9 +2,9 @@ package bot
 
 import (
 	"fmt"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"time"
 
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 

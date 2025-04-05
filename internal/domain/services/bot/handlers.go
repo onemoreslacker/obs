@@ -109,6 +109,7 @@ func (b *Bot) handleStart(msg *tgbotapi.Message) tgbotapi.MessageConfig {
 			"registration failed",
 			slog.String("msg", err.Error()),
 		)
+
 		if !errors.Is(err, scrapperapi.ErrChatAlreadyExists) {
 			return tgbotapi.NewMessage(msg.Chat.ID, FailedRegistration)
 		}

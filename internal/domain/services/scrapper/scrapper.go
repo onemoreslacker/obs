@@ -1,11 +1,11 @@
 package scrapper
 
 import (
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"net"
 	"net/url"
 
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 	botclient "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/bot"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/external"

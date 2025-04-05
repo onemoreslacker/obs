@@ -3,7 +3,6 @@ package botservice
 import (
 	"context"
 	"errors"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	botapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/bot_api"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/services/bot"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 	srvb "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/bot_server"

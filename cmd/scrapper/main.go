@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"log/slog"
 	"os"
 
 	scrapperservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper_service"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 )
 
 func main() {

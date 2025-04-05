@@ -1,12 +1,12 @@
 package scrapperserver
 
 import (
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	"net"
 	"net/http"
 	"time"
 
 	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 )
 
 // New instantiates a new http.Server entity.
