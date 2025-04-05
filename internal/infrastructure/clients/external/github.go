@@ -5,43 +5,69 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"time"
+
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 )
 
-type GitHubRepository struct {
-	LastUpdated time.Time `json:"updated_at"`
+type GitHubUpdates struct {
+	Items []entities.GitHubUpdate `json:"items"`
 }
 
-func (c *Client) GetGitHubRepository(link string) (GitHubRepository, error) {
-	apiURL, err := buildGitHubAPIURL(link)
+func (c *Client) RetrieveGithubUpdates(link string) ([]entities.GitHubUpdate, error) {
+	prURL, err := buildGitHubAPIURL(link, GitHubPRSuffix)
 	if err != nil {
-		return GitHubRepository{}, nil
+		return nil, err
 	}
 
+	pulls, err := c.fetchGitHubUpdates(prURL)
+	if err != nil {
+		return nil, err
+	}
+
+	issuesURL, err := buildGitHubAPIURL(link, GitHubIssueSuffix)
+	if err != nil {
+		return nil, err
+	}
+
+	issues, err := c.fetchGitHubUpdates(issuesURL)
+	if err != nil {
+		return nil, err
+	}
+
+	updates := make([]entities.GitHubUpdate, 0, len(pulls.Items)+len(issues.Items))
+
+	updates = append(updates, pulls.Items...)
+	updates = append(updates, issues.Items...)
+
+	return updates, nil
+}
+
+func (c *Client) fetchGitHubUpdates(apiURL string) (GitHubUpdates, error) {
 	req, err := http.NewRequest(http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
-		return GitHubRepository{}, err
+		return GitHubUpdates{}, err
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return GitHubRepository{}, err
+		return GitHubUpdates{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return GitHubRepository{}, ErrRequestFailed
+		return GitHubUpdates{}, ErrRequestFailed
 	}
 
-	var repo GitHubRepository
-	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		return GitHubRepository{}, err
+	var updates GitHubUpdates
+
+	if err := json.NewDecoder(resp.Body).Decode(&updates.Items); err != nil {
+		return GitHubUpdates{}, err
 	}
 
-	return repo, nil
+	return updates, nil
 }
 
-func buildGitHubAPIURL(link string) (string, error) {
+func buildGitHubAPIURL(link, suffix string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
 		return "", err
@@ -52,7 +78,12 @@ func buildGitHubAPIURL(link string) (string, error) {
 	}
 
 	u.Host = GitHubHost
-	u.Path = path.Join(GitHubBasePath, u.Path)
+	u.Path = path.Join(GitHubBasePath, u.Path, suffix)
+
+	query := u.Query()
+	query.Set("sort", "created")
+	query.Set("direction", "desc")
+	u.RawQuery = query.Encode()
 
 	return u.String(), nil
 }

@@ -93,25 +93,36 @@ func (s *Scrapper) collectUpdates(links []entities.Link, updates map[string][]in
 }
 
 func (s *Scrapper) checkForUpdatesStackOverflow(link string) (bool, error) {
-	resp, err := s.external.GetStackOverflowAnswers(link)
+	updates, err := s.external.RetrieveStackOverflowUpdates(link)
 	if err != nil {
 		return false, err
 	}
 
-	lastActivityDate := time.Unix(resp.Items[0].LastActivityDate, 0)
+	if len(updates) == 0 {
+		return false, nil
+	}
 
-	return lastActivityDate.After(getCutoff()), nil
+	createdAt := time.Unix(updates[0].CreatedAt, 0)
+
+	return createdAt.After(getCutoff()), nil
 }
 
 func (s *Scrapper) checkForUpdatesGithub(link string) (bool, error) {
-	resp, err := s.external.GetGitHubRepository(link)
+	updates, err := s.external.RetrieveGithubUpdates(link)
 	if err != nil {
 		return false, err
 	}
 
-	updatedAt := resp.LastUpdated
+	if len(updates) == 0 {
+		return false, nil
+	}
 
-	return updatedAt.After(getCutoff()), nil
+	createdAt, err := time.Parse(time.RFC3339, updates[0].CreatedAt)
+	if err != nil {
+		return false, err
+	}
+
+	return createdAt.After(getCutoff()), nil
 }
 
 func (s *Scrapper) identifyService(link string) (string, error) {

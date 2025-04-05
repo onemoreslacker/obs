@@ -15,8 +15,11 @@ func New() *Client {
 }
 
 const (
-	GitHubHost            = "api.github.com"
-	GitHubBasePath        = "repos"
-	StackOverflowHost     = "api.stackexchange.com"
-	StackOverflowBasePath = "answers"
+	GitHubHost                = "api.github.com"
+	GitHubBasePath            = "repos"
+	GitHubPRSuffix            = "pulls"
+	GitHubIssueSuffix         = "issues"
+	StackOverflowHost         = "api.stackexchange.com"
+	StackOverflowAnswersPath  = "answers"
+	StackOverflowCommentsPath = "comments"
 )

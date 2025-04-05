@@ -6,44 +6,74 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 )
 
-type StackOverflowAnswers struct {
-	Items []struct {
-		LastActivityDate int64 `json:"last_activity_date"`
-	} `json:"items"`
+// StackOverflowUpdates represents updates via the specified link (either answer or comment).
+type StackOverflowUpdates struct {
+	Items []entities.StackOverflowUpdate `json:"items"`
 }
 
-func (c *Client) GetStackOverflowAnswers(link string) (StackOverflowAnswers, error) {
-	apiURL, err := buildStackOverflowAPIURL(link)
+// RetrieveStackOverflowUpdates returns updates from StackOverflow
+// associated with answers and comments.
+func (c *Client) RetrieveStackOverflowUpdates(link string) ([]entities.StackOverflowUpdate, error) {
+	answersURL, err := buildStackOverflowAPIURL(link, StackOverflowAnswersPath)
 	if err != nil {
-		return StackOverflowAnswers{}, err
+		return nil, err
 	}
 
+	answers, err := c.fetchStackOverflowUpdates(answersURL)
+	if err != nil {
+		return nil, err
+	}
+
+	commentsURL, err := buildStackOverflowAPIURL(link, StackOverflowCommentsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	comments, err := c.fetchStackOverflowUpdates(commentsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	updates := make([]entities.StackOverflowUpdate, 0, len(answers.Items)+len(comments.Items))
+	updates = append(updates, answers.Items...)
+	updates = append(updates, comments.Items...)
+
+	return updates, nil
+}
+
+// fetchStackOverflowUpdates fetches updates from StackOverflow,
+// whether it is answers or comments.
+func (c *Client) fetchStackOverflowUpdates(apiURL string) (StackOverflowUpdates, error) {
 	req, err := http.NewRequest(http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
-		return StackOverflowAnswers{}, err
+		return StackOverflowUpdates{}, err
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return StackOverflowAnswers{}, err
+		return StackOverflowUpdates{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return StackOverflowAnswers{}, ErrRequestFailed
+		return StackOverflowUpdates{}, ErrRequestFailed
 	}
 
-	var answers StackOverflowAnswers
-	if err := json.NewDecoder(resp.Body).Decode(&answers); err != nil {
-		return StackOverflowAnswers{}, err
+	var answers StackOverflowUpdates
+
+	if err := json.NewDecoder(resp.Body).Decode(&answers.Items); err != nil {
+		return StackOverflowUpdates{}, err
 	}
 
 	return answers, nil
 }
 
-func buildStackOverflowAPIURL(link string) (string, error) {
+// buildStackOverflowAPIURL builds url according to provided link and basePath.
+func buildStackOverflowAPIURL(link, basePath string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
 		return "", err
@@ -56,13 +86,14 @@ func buildStackOverflowAPIURL(link string) (string, error) {
 	parts := strings.Split(u.Path, "/")
 	parts = parts[:len(parts)-1]
 
-	cut := path.Join(strings.Join(parts, "/"), StackOverflowBasePath)
-	u.Path = cut
+	cut := path.Join(strings.Join(parts, "/"), basePath)
+	u.Path = path.Join(StackOverflowHost, cut)
 
 	query := u.Query()
 	query.Set("order", "desc")
 	query.Set("sort", "activity")
 	query.Set("site", "stackoverflow")
+	query.Set("filter", "withbody")
 	u.RawQuery = query.Encode()
 
 	return u.String(), nil
