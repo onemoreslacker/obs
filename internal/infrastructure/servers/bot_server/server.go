@@ -15,7 +15,7 @@ func New(cfg *config.Config, api *bot.API) *http.Server {
 
 	// TODO: identify an appropriate ReadHeaderTimeout.
 	return &http.Server{
-		Addr:              net.JoinHostPort(cfg.Serving.Host, cfg.Serving.BotPort),
+		Addr:              net.JoinHostPort(cfg.Serving.BotHost, cfg.Serving.BotPort),
 		Handler:           bot.HandlerFromMux(api, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

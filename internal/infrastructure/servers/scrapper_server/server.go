@@ -14,7 +14,7 @@ func New(cfg *config.Config, api *scrapperapi.API) *http.Server {
 	mux := http.NewServeMux()
 
 	return &http.Server{
-		Addr:              net.JoinHostPort(cfg.Serving.Host, cfg.Serving.ScrapperPort),
+		Addr:              net.JoinHostPort(cfg.Serving.ScrapperHost, cfg.Serving.ScrapperPort),
 		Handler:           scrapperapi.HandlerFromMux(api, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

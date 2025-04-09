@@ -12,7 +12,11 @@ import (
 )
 
 func (s *Scrapper) scrapeUpdates() error {
-	chatIDs := s.repository.GetChatIDs()
+	chatIDs, err := s.repository.GetChatIDs()
+	if err != nil {
+		return err
+	}
+
 	updates := make(map[string][]int64)
 
 	for _, chatID := range chatIDs {

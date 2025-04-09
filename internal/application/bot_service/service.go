@@ -44,7 +44,7 @@ func New(cfg *config.Config) (*BotService, error) {
 		return nil, err
 	}
 
-	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Serving.Host, cfg.Serving.ScrapperPort))
+	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Serving.ScrapperHost, cfg.Serving.ScrapperPort))
 	if err != nil {
 		return nil, err
 	}

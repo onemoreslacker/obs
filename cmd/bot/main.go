@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log/slog"
 	"os"
 
@@ -9,12 +10,14 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	configFileName := flag.String("config", "config/config.yaml", "path to config file")
+	flag.Parse()
+
+	cfg, err := config.Load(*configFileName)
 	if err != nil {
 		slog.Error(
-			"config was not loaded",
+			"Bot: config was not loaded",
 			slog.String("msg", err.Error()),
-			slog.String("service", "cfg"),
 		)
 		os.Exit(1)
 	}
@@ -22,18 +25,16 @@ func main() {
 	service, err := botservice.New(cfg)
 	if err != nil {
 		slog.Error(
-			"service was not initialized",
+			"Bot: initialization error",
 			slog.String("msg", err.Error()),
-			slog.String("service", "scrapper"),
 		)
 		os.Exit(1)
 	}
 
 	if err := service.Run(); err != nil {
 		slog.Error(
-			"service job was failed",
+			"Bot: service is down",
 			slog.String("msg", err.Error()),
-			slog.String("service", "scrapper"),
 		)
 		os.Exit(1)
 	}

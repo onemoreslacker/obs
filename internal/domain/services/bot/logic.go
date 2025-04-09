@@ -2,14 +2,16 @@ package bot
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/commands"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (b *Bot) isRegistered(id int64) error {
-	resp, err := b.scrapperClient.GetTgChatId(context.Background(), id)
+func (b *Bot) isRegistered(chatID int64) error {
+	resp, err := b.scrapperClient.GetTgChatId(context.Background(), chatID)
 	if err != nil {
 		return err
 	}
@@ -19,7 +21,24 @@ func (b *Bot) isRegistered(id int64) error {
 		return ErrUserNotRegistered
 	}
 
-	return nil
+	var chatIDs []int64
+
+	if err := json.NewDecoder(resp.Body).Decode(&chatIDs); err != nil {
+		return ErrUserNotRegistered
+	}
+
+	slog.Info(
+		"Bot: registered chats",
+		slog.Any("chatIDs", chatIDs),
+	)
+
+	for _, id := range chatIDs {
+		if chatID == id {
+			return nil
+		}
+	}
+
+	return ErrUserNotRegistered
 }
 
 func (b *Bot) InitializeCommand(msg *tgbotapi.Message) tgbotapi.MessageConfig {

@@ -22,15 +22,13 @@ type ScrapperService struct {
 	srv *http.Server
 }
 
-func New(cfg *config.Config) (*ScrapperService, error) {
-	links := storage.NewLinksRepository()
-
-	scr, err := scrapper.New(cfg, links)
+func New(cfg *config.Config, repository storage.LinksRepository) (*ScrapperService, error) {
+	scr, err := scrapper.New(cfg, repository)
 	if err != nil {
 		return nil, err
 	}
 
-	api := scrapperapi.New(links)
+	api := scrapperapi.New(repository)
 
 	return &ScrapperService{
 		scr: scr,
