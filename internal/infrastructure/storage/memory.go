@@ -8,21 +8,21 @@ import (
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 )
 
-// LinksRepository stores links tracked by user and guarded by mutex.
-type LinksRepository struct {
+// LinksInMemoryService stores links tracked by user and guarded by mutex.
+type LinksInMemoryService struct {
 	links map[int64]map[string]entities.Link
 	mu    sync.Mutex
 }
 
-// NewLinksRepository implements a new LinksRepository entity.
-func NewLinksRepository() *LinksRepository {
-	return &LinksRepository{
+// NewLinksInMemoryService implements a new LinksInMemoryService entity.
+func NewLinksInMemoryService() *LinksInMemoryService {
+	return &LinksInMemoryService{
 		links: make(map[int64]map[string]entities.Link),
 	}
 }
 
 // AddChat creates a map of links for a new chat.
-func (r *LinksRepository) AddChat(id int64) error {
+func (r *LinksInMemoryService) AddChat(id int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -36,7 +36,7 @@ func (r *LinksRepository) AddChat(id int64) error {
 }
 
 // DeleteChat deletes all links for the provided chat.
-func (r *LinksRepository) DeleteChat(id int64) error {
+func (r *LinksInMemoryService) DeleteChat(id int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -50,7 +50,7 @@ func (r *LinksRepository) DeleteChat(id int64) error {
 }
 
 // AddLink adds new tracking link.
-func (r *LinksRepository) AddLink(id int64, link entities.Link) error {
+func (r *LinksInMemoryService) AddLink(id int64, link entities.Link) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -78,7 +78,7 @@ func (r *LinksRepository) AddLink(id int64, link entities.Link) error {
 }
 
 // GetLinks retrieves links attached to the chat id.
-func (r *LinksRepository) GetLinks(id int64) (links []entities.Link, err error) {
+func (r *LinksInMemoryService) GetLinks(id int64) (links []entities.Link, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -97,30 +97,28 @@ func (r *LinksRepository) GetLinks(id int64) (links []entities.Link, err error) 
 }
 
 // DeleteLink deletes link attached to the chat id.
-func (r *LinksRepository) DeleteLink(id int64, url string) (link entities.Link, err error) {
+func (r *LinksInMemoryService) DeleteLink(id int64, url string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	_, exists := r.links[id]
 	if !exists {
-		return entities.Link{}, scrapperapi.ErrChatNotFound
+		return scrapperapi.ErrChatNotFound
 	}
 
 	entries := r.links[id]
 
 	if _, exists := entries[url]; !exists {
-		return entities.Link{}, scrapperapi.ErrLinkNotFound
+		return scrapperapi.ErrLinkNotFound
 	}
-
-	link = entries[url]
 
 	delete(entries, url)
 
-	return link, nil
+	return nil
 }
 
 // GetChatsIDs returns all the registered chat IDs.
-func (r *LinksRepository) GetChatIDs() []int64 {
+func (r *LinksInMemoryService) GetChatIDs() ([]int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -129,5 +127,5 @@ func (r *LinksRepository) GetChatIDs() []int64 {
 		ids = append(ids, id)
 	}
 
-	return ids
+	return ids, nil
 }

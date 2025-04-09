@@ -46,7 +46,7 @@ func TestDataInsertion(t *testing.T) {
 		},
 	}
 
-	repository := storage.NewLinksRepository()
+	repository := storage.NewLinksInMemoryService()
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestHappyPath(t *testing.T) {
 		},
 	}
 
-	repositories := storage.NewLinksRepository()
+	repositories := storage.NewLinksInMemoryService()
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -124,8 +124,7 @@ func TestHappyPath(t *testing.T) {
 				require.FailNow(t, err.Error())
 			}
 
-			if link, err := repositories.DeleteLink(test.chatID, *test.link.Url); err != nil {
-				require.Equal(t, test.link, link)
+			if err := repositories.DeleteLink(test.chatID, *test.link.Url); err != nil {
 				require.FailNow(t, err.Error())
 			}
 		})
@@ -173,7 +172,7 @@ func TestDoubleInsertion(t *testing.T) {
 		},
 	}
 
-	repositories := storage.NewLinksRepository()
+	repositories := storage.NewLinksInMemoryService()
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
