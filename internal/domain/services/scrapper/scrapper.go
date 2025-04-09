@@ -15,21 +15,21 @@ import (
 
 type Scrapper struct {
 	botClient  botclient.ClientInterface
-	repository linkRepository
+	repository LinksService
 	external   *external.Client
 	cfg        *config.Config
-	sched      gocron.Scheduler
+	sch        gocron.Scheduler
 }
 
-type linkRepository interface {
-	GetChatIDs() []int64
+type LinksService interface {
+	GetChatIDs() ([]int64, error)
 	GetLinks(int64) (links []entities.Link, err error)
 }
 
-func New(cfg *config.Config, repository linkRepository) (*Scrapper, error) {
+func New(cfg *config.Config, repository LinksService) (*Scrapper, error) {
 	server := url.URL{
 		Scheme: "http",
-		Host:   net.JoinHostPort(cfg.Serving.Host, cfg.Serving.BotPort),
+		Host:   net.JoinHostPort(cfg.Serving.BotHost, cfg.Serving.BotPort),
 	}
 
 	client, err := botclient.NewClient(server.String())
@@ -47,12 +47,12 @@ func New(cfg *config.Config, repository linkRepository) (*Scrapper, error) {
 		repository: repository,
 		external:   external.New(),
 		cfg:        cfg,
-		sched:      s,
+		sch:        s,
 	}, nil
 }
 
 func (s *Scrapper) Run() error {
-	_, err := s.sched.NewJob(
+	_, err := s.sch.NewJob(
 		gocron.DailyJob(
 			1,
 			gocron.NewAtTimes(
@@ -83,7 +83,7 @@ func (s *Scrapper) Run() error {
 		return err
 	}
 
-	s.sched.Start()
+	s.sch.Start()
 
 	return nil
 }
