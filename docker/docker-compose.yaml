@@ -5,10 +5,14 @@ services:
             dockerfile: ./docker/bot.Dockerfile
         ports:
             - "8081:8081"
+        depends_on:
+            database:
+                condition: service_healthy
         env_file:
-            - ../.env
-        network_mode: "host"
+            - .env
         restart: unless-stopped
+        networks:
+            - backend
 
     scrapper:
         build:
@@ -16,6 +20,53 @@ services:
             dockerfile: ./docker/scrapper.Dockerfile
         ports:
             - "8080:8080"
-        env_file: ../.env
-        network_mode: "host"
+        depends_on:
+            database:
+                condition: service_healthy
+        env_file: .env
         restart: unless-stopped
+        networks:
+            - backend
+
+    database:
+        image: postgres:latest
+        env_file: .env
+        ports:
+            - "${POSTGRES_PORT}:5432"
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            interval: 2s
+            timeout: 2s
+            retries: 10
+        volumes:
+            - data:/var/lib/postgresql/data
+        restart: unless-stopped
+        networks:
+            - backend
+
+    liquibase-migrations:
+        container_name: migrations
+        image: liquibase/liquibase:4.29
+        depends_on:
+            - database
+        env_file: .env
+        command:
+            - --searchPath=/changesets
+            - --changelog-file=changelog.yaml
+            - --driver=org.postgresql.Driver
+            - --url=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+            - --username=${POSTGRES_USER}
+            - --password=${POSTGRES_PASSWORD}
+            - update
+        volumes:
+            - ../migrations:/changesets
+        networks:
+            - backend
+
+
+networks:
+    backend:
+        driver: bridge
+
+volumes:
+    data:
