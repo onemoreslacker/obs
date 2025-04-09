@@ -37,7 +37,7 @@ func TestUnknownCommand(t *testing.T) {
 			api := NewMockTgAPI(t)
 			scrapperClient := NewMockScrapperClient(t)
 
-			cfg, _ := config.Load()
+			cfg, _ := config.Load("config/config.yaml")
 
 			b, _ := bot.New(scrapperClient, api, cfg)
 
