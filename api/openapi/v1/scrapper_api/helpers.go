@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"net/url"
 )
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
@@ -26,17 +25,8 @@ func respondWithError(w http.ResponseWriter, code int, msg, description string) 
 	respondWithJSON(w, code, err)
 }
 
-func checkResourceAvailability(link string) bool {
-	u, err := url.Parse(link)
-	if err != nil {
-		return false
-	}
-
-	if u.Scheme == "" {
-		u.Scheme = "https"
-	}
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), http.NoBody)
+func checkResourceAvailability(url string) bool {
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return false
 	}

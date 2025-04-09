@@ -128,6 +128,8 @@ func (b *Bot) handleCancel(msg *tgbotapi.Message) tgbotapi.MessageConfig {
 		return tgbotapi.NewMessage(msg.Chat.ID, UndefinedCancel)
 	}
 
+	b.currentCommand = nil
+
 	return tgbotapi.NewMessage(msg.Chat.ID, SuccessfulCancel)
 }
 

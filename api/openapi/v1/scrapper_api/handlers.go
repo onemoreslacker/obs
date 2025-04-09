@@ -3,8 +3,10 @@ package scrapperapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
 )
@@ -18,7 +20,8 @@ type linksRepository interface {
 	DeleteChat(id int64) error
 	AddLink(id int64, link entities.Link) error
 	GetLinks(id int64) ([]entities.Link, error)
-	DeleteLink(id int64, url string) (entities.Link, error)
+	DeleteLink(id int64, url string) error
+	GetChatIDs() ([]int64, error)
 }
 
 func New(links linksRepository) *API {
@@ -40,13 +43,14 @@ func (a *API) PostTgChatId(w http.ResponseWriter, _ *http.Request, id int64) {
 
 //nolint:revive,stylecheck // Generated code cannot be edited.
 func (a *API) GetTgChatId(w http.ResponseWriter, _ *http.Request, id int64) {
-	if _, err := a.links.GetLinks(id); err != nil {
+	chats, err := a.links.GetChatIDs()
+	if err != nil {
 		respondWithError(w, http.StatusBadRequest,
 			err.Error(), ErrInvalidBody.Error())
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, http.NoBody)
+	respondWithJSON(w, http.StatusOK, chats)
 }
 
 //nolint:revive,stylecheck // Generated code cannot be edited.
@@ -77,15 +81,24 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 		return
 	}
 
-	url, tags, filters := *model.Link, *model.Tags, *model.Filters
-
-	if !checkResourceAvailability(url) {
+	u, err := url.Parse(*model.Link)
+	if err != nil {
 		respondWithError(w, http.StatusBadRequest,
 			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())
 		return
 	}
 
-	link := entities.NewLink(rand.Int64(), url, tags, filters) //nolint:gosec // Temporary solution
+	u.Scheme = "https"
+
+	tags, filters := *model.Tags, *model.Filters
+
+	if !checkResourceAvailability(u.String()) {
+		respondWithError(w, http.StatusBadRequest,
+			ErrAddLinkInvalidLink.Error(), ErrInvalidBody.Error())
+		return
+	}
+
+	link := entities.NewLink(rand.Int64(), u.String(), tags, filters) //nolint:gosec // Temporary solution
 
 	if err := a.links.AddLink(id, link); err != nil {
 		var status int
@@ -145,8 +158,21 @@ func (a *API) DeleteLinks(w http.ResponseWriter, r *http.Request, params DeleteL
 		return
 	}
 
-	link, err := a.links.DeleteLink(id, *model.Link)
+	u, err := url.Parse(*model.Link)
 	if err != nil {
+		respondWithError(w, http.StatusBadRequest,
+			ErrDeleteLinkInvalidLink.Error(), ErrInvalidBody.Error())
+		return
+	}
+
+	u.Scheme = "https"
+
+	if err := a.links.DeleteLink(id, u.String()); err != nil {
+		slog.Error(
+			"Scrapper API: DeleteLinks failed",
+			slog.String("msg", err.Error()),
+		)
+
 		var status int
 
 		if errors.Is(err, ErrLinkAlreadyExists) {
@@ -161,5 +187,5 @@ func (a *API) DeleteLinks(w http.ResponseWriter, r *http.Request, params DeleteL
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, LinkResponse(link))
+	respondWithJSON(w, http.StatusOK, model.Link)
 }

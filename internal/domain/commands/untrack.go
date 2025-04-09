@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
@@ -78,7 +79,13 @@ func (c *CommandUntrack) Request() string {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusConflict {
+	log.Println(resp.StatusCode)
+
+	if resp.StatusCode == http.StatusBadRequest {
+		return FailedUntrack
+	}
+
+	if resp.StatusCode == http.StatusConflict {
 		return LinkNotYetTracked
 	}
 
