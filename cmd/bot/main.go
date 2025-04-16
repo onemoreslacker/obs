@@ -1,41 +1,41 @@
 package main
 
 import (
-	"flag"
 	"log/slog"
-	"os"
 
-	botservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot_service"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bootstrap"
+	botservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/service"
+	"go.uber.org/fx"
 )
 
 func main() {
-	configFileName := flag.String("config", "config/config.yaml", "path to config file")
-	flag.Parse()
+	app := fx.New(
+		fx.Decorate(
+			bootstrap.InitBotCommands,
+		),
+		fx.Provide(
+			bootstrap.LoadConfig,
+			bootstrap.InitTelegramAPI,
+			bootstrap.InitScrapperClient,
+			bootstrap.InitTelebot,
+			bootstrap.InitBotServer,
+			bootstrap.InitBotService,
+		),
+		fx.Invoke(func(
+			service *botservice.BotService,
+		) error {
+			if err := service.Run(); err != nil {
+				slog.Error(
+					"Bot: service is down",
+					slog.String("msg", err.Error()),
+				)
 
-	cfg, err := config.Load(*configFileName)
-	if err != nil {
-		slog.Error(
-			"Bot: config was not loaded",
-			slog.String("msg", err.Error()),
-		)
-		os.Exit(1)
-	}
+				return err
+			}
 
-	service, err := botservice.New(cfg)
-	if err != nil {
-		slog.Error(
-			"Bot: initialization error",
-			slog.String("msg", err.Error()),
-		)
-		os.Exit(1)
-	}
+			return nil
+		}),
+	)
 
-	if err := service.Run(); err != nil {
-		slog.Error(
-			"Bot: service is down",
-			slog.String("msg", err.Error()),
-		)
-		os.Exit(1)
-	}
+	app.Run()
 }
