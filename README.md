@@ -1,18 +1,22 @@
-# Go Track
+# 📡 Observer
 
-Go Track is the Telegram bot that notify you about all important updates on services like GitHub, StackOverflow. 
-On the current stage there are abilities of subscribing on the discussion updates on StackOverflow as well as repository activity on GitHub.
+Observer is a Telegram bot that keeps you in the loop by monitoring activity from external sources like GitHub and Stack Overflow.
+Receive instant updates via Telegram whenever something relevant happens!
 
-## 
- 
-To run the application:
 
-```bash
-make run
+## Installation
+
+To run Observer locally, make sure you have [Docker Compose](https://docs.docker.com/compose/install/standalone/) installed.
+
+### 1. Clone the repository
+```shell
+git clone git@github.com:onemoreslacker/observer.git
+cd observer/docker
 ```
 
-The termination looks like:
-
-```bash 
-make stop
+### 2. Start the services
+```shell
+make up
 ```
+
+That's it! Your bot should now be up and running.
