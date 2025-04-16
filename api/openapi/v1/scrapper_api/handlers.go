@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
 type API struct {
@@ -18,8 +18,8 @@ type API struct {
 type linksRepository interface {
 	AddChat(id int64) error
 	DeleteChat(id int64) error
-	AddLink(id int64, link entities.Link) error
-	GetLinks(id int64) ([]entities.Link, error)
+	AddLink(id int64, link models.Link) error
+	GetLinks(id int64) ([]models.Link, error)
 	DeleteLink(id int64, url string) error
 	GetChatIDs() ([]int64, error)
 }
@@ -98,7 +98,7 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 		return
 	}
 
-	link := entities.NewLink(rand.Int64(), u.String(), tags, filters) //nolint:gosec // Temporary solution
+	link := models.NewLink(rand.Int64(), u.String(), tags, filters) //nolint:gosec // Temporary solution
 
 	if err := a.links.AddLink(id, link); err != nil {
 		var status int

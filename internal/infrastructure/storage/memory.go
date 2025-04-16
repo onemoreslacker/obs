@@ -5,19 +5,19 @@ import (
 	"sync"
 
 	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
 // LinksInMemoryService stores links tracked by user and guarded by mutex.
 type LinksInMemoryService struct {
-	links map[int64]map[string]entities.Link
+	links map[int64]map[string]models.Link
 	mu    sync.Mutex
 }
 
 // NewLinksInMemoryService implements a new LinksInMemoryService entity.
 func NewLinksInMemoryService() *LinksInMemoryService {
 	return &LinksInMemoryService{
-		links: make(map[int64]map[string]entities.Link),
+		links: make(map[int64]map[string]models.Link),
 	}
 }
 
@@ -30,7 +30,7 @@ func (r *LinksInMemoryService) AddChat(id int64) error {
 		return scrapperapi.ErrChatAlreadyExists
 	}
 
-	r.links[id] = make(map[string]entities.Link)
+	r.links[id] = make(map[string]models.Link)
 
 	return nil
 }
@@ -50,7 +50,7 @@ func (r *LinksInMemoryService) DeleteChat(id int64) error {
 }
 
 // AddLink adds new tracking link.
-func (r *LinksInMemoryService) AddLink(id int64, link entities.Link) error {
+func (r *LinksInMemoryService) AddLink(id int64, link models.Link) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -78,7 +78,7 @@ func (r *LinksInMemoryService) AddLink(id int64, link entities.Link) error {
 }
 
 // GetLinks retrieves links attached to the chat id.
-func (r *LinksInMemoryService) GetLinks(id int64) (links []entities.Link, err error) {
+func (r *LinksInMemoryService) GetLinks(id int64) (links []models.Link, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -87,7 +87,7 @@ func (r *LinksInMemoryService) GetLinks(id int64) (links []entities.Link, err er
 		return nil, scrapperapi.ErrChatNotFound
 	}
 
-	links = make([]entities.Link, 0, len(entries))
+	links = make([]models.Link, 0, len(entries))
 
 	for _, link := range entries {
 		links = append(links, link)

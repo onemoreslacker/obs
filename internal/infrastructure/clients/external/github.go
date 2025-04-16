@@ -6,14 +6,14 @@ import (
 	"net/url"
 	"path"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
 type GitHubUpdates struct {
-	Items []entities.GitHubUpdate `json:"items"`
+	Items []models.GitHubUpdate `json:"items"`
 }
 
-func (c *Client) RetrieveGithubUpdates(link string) ([]entities.GitHubUpdate, error) {
+func (c *Client) RetrieveGitHubUpdates(link string) ([]models.GitHubUpdate, error) {
 	prURL, err := buildGitHubAPIURL(link, GitHubPRSuffix)
 	if err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func (c *Client) RetrieveGithubUpdates(link string) ([]entities.GitHubUpdate, er
 		return nil, err
 	}
 
-	updates := make([]entities.GitHubUpdate, 0, len(pulls.Items)+len(issues.Items))
+	updates := make([]models.GitHubUpdate, 0, len(pulls.Items)+len(issues.Items))
 
 	updates = append(updates, pulls.Items...)
 	updates = append(updates, issues.Items...)

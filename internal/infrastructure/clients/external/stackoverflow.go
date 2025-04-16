@@ -7,17 +7,17 @@ import (
 	"path"
 	"strings"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
 // StackOverflowUpdates represents updates via the specified link (either answer or comment).
 type StackOverflowUpdates struct {
-	Items []entities.StackOverflowUpdate `json:"items"`
+	Items []models.StackOverflowUpdate `json:"items"`
 }
 
 // RetrieveStackOverflowUpdates returns updates from StackOverflow
 // associated with answers and comments.
-func (c *Client) RetrieveStackOverflowUpdates(link string) ([]entities.StackOverflowUpdate, error) {
+func (c *Client) RetrieveStackOverflowUpdates(link string) ([]models.StackOverflowUpdate, error) {
 	answersURL, err := buildStackOverflowAPIURL(link, StackOverflowAnswersPath)
 	if err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func (c *Client) RetrieveStackOverflowUpdates(link string) ([]entities.StackOver
 		return nil, err
 	}
 
-	updates := make([]entities.StackOverflowUpdate, 0, len(answers.Items)+len(comments.Items))
+	updates := make([]models.StackOverflowUpdate, 0, len(answers.Items)+len(comments.Items))
 	updates = append(updates, answers.Items...)
 	updates = append(updates, comments.Items...)
 

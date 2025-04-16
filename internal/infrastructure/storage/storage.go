@@ -9,14 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
 type LinksRepository interface {
 	AddChat(id int64) error
 	DeleteChat(id int64) error
-	AddLink(id int64, link entities.Link) error
-	GetLinks(id int64) ([]entities.Link, error)
+	AddLink(id int64, link models.Link) error
+	GetLinks(id int64) ([]models.Link, error)
 	DeleteLink(id int64, url string) error
 	GetChatIDs() ([]int64, error)
 }

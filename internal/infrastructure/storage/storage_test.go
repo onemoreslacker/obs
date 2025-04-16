@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/entities"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/storage"
 	"github.com/stretchr/testify/require"
 )
@@ -26,23 +26,23 @@ func TestDataInsertion(t *testing.T) {
 
 	tests := map[string]struct {
 		chatID int64
-		link   entities.Link
+		link   models.Link
 	}{
 		"link with tags and filters insertion": {
 			chatID: chatIDTagsFilters,
-			link:   entities.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
 		},
 		"link with tags insertion": {
 			chatID: chatIDTags,
-			link:   entities.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
 		},
 		"link with filters insertion": {
 			chatID: chatIDFilters,
-			link:   entities.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
 		},
 		"link without tags and filters": {
 			chatID: chatID,
-			link:   entities.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
 		},
 	}
 
@@ -90,23 +90,23 @@ func TestHappyPath(t *testing.T) {
 
 	tests := map[string]struct {
 		chatID int64
-		link   entities.Link
+		link   models.Link
 	}{
 		"link with tags and filters": {
 			chatID: chatIDTagsFilters,
-			link:   entities.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
 		},
 		"link with tags": {
 			chatID: chatIDTags,
-			link:   entities.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
 		},
 		"link with filters": {
 			chatID: chatIDFilters,
-			link:   entities.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
 		},
 		"link without tags and filters": {
 			chatID: chatID,
-			link:   entities.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
 		},
 	}
 
@@ -147,27 +147,27 @@ func TestDoubleInsertion(t *testing.T) {
 
 	tests := map[string]struct {
 		chatID int64
-		link   entities.Link
+		link   models.Link
 		want   error
 	}{
 		"link with tags and filters": {
 			chatID: chatIDTagsFilters,
-			link:   entities.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, tags, filters), //nolint:gosec // Temporary solution.
 			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 		"link with tags": {
 			chatID: chatIDTags,
-			link:   entities.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, tags, []string{}), //nolint:gosec // Temporary solution.
 			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 		"link with filters": {
 			chatID: chatIDFilters,
-			link:   entities.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, []string{}, filters), //nolint:gosec // Temporary solution.
 			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 		"link without tags and filters": {
 			chatID: chatID,
-			link:   entities.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
+			link:   models.NewLink(rand.Int64(), url, []string{}, []string{}), //nolint:gosec // Temporary solution.
 			want:   scrapperapi.ErrLinkAlreadyExists,
 		},
 	}
