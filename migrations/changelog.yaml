@@ -1,4 +1,4 @@
 databaseChangeLog:
     - include:
-        file: 00-schema.sql
+        file: 000-schema.sql
         relativeToChangelogFile: true
