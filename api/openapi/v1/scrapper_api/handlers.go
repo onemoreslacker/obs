@@ -19,9 +19,9 @@ type linksRepository interface {
 	AddChat(id int64) error
 	DeleteChat(id int64) error
 	AddLink(id int64, link models.Link) error
-	GetLinks(id int64) ([]models.Link, error)
+	GetChatLinks(id int64, includeAll bool) ([]models.Link, error)
 	DeleteLink(id int64, url string) error
-	GetChatIDs() ([]int64, error)
+	GetChatsIDs() ([]int64, error)
 }
 
 func New(links linksRepository) *API {
@@ -43,7 +43,7 @@ func (a *API) PostTgChatId(w http.ResponseWriter, _ *http.Request, id int64) {
 
 //nolint:revive,stylecheck // Generated code cannot be edited.
 func (a *API) GetTgChatId(w http.ResponseWriter, _ *http.Request, id int64) {
-	chats, err := a.links.GetChatIDs()
+	chats, err := a.links.GetChatsIDs()
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest,
 			err.Error(), ErrInvalidBody.Error())
@@ -121,7 +121,7 @@ func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinks
 func (a *API) GetLinks(w http.ResponseWriter, _ *http.Request, params GetLinksParams) {
 	id := params.TgChatId
 
-	links, err := a.links.GetLinks(id)
+	links, err := a.links.GetChatLinks(id, true)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest,
 			ErrGetLinksFailed.Error(), ErrInvalidBody.Error())
