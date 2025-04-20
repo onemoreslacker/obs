@@ -16,8 +16,11 @@ func main() {
 			bootstrap.InitPool,
 			bootstrap.InitRepository,
 			bootstrap.InitBotClient,
+			bootstrap.InitExternalClient,
+			bootstrap.InitTelegramAPI,
 			bootstrap.InitScheduler,
-			bootstrap.InitScrapper,
+			bootstrap.InitNotifier,
+			bootstrap.InitUpdater,
 			bootstrap.InitScrapperServer,
 			bootstrap.InitScrapperService,
 		),
@@ -29,7 +32,7 @@ func main() {
 
 			if err := service.Run(); err != nil {
 				slog.Error(
-					"Scrapper service is down",
+					"scrapper service is down",
 					slog.String("msg", err.Error()),
 				)
 
