@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"flag"
+
 	"log/slog"
 	"net"
 	"net/http"
@@ -11,10 +12,12 @@ import (
 	scrapperapi "github.com/es-debug/backend-academy-2024-go-template/api/openapi/v1/scrapper_api"
 	botservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/service"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/telebot"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/core"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/notifier"
 	scrapperservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/updater"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/config"
 	botclient "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/bot"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/external"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 	botserver "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/bot"
 	scrapperserver "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/scrapper"
@@ -56,7 +59,7 @@ func InitPool(cfg *config.Config) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func InitRepository(cfg *config.Config, pool *pgxpool.Pool) (storage.LinksRepository, error) {
+func InitRepository(cfg *config.Config, pool *pgxpool.Pool) (storage.LinksService, error) {
 	repository, err := storage.New(cfg, pool)
 	if err != nil {
 		slog.Error(
@@ -95,29 +98,9 @@ func InitScheduler() (gocron.Scheduler, error) {
 	return scheduler, nil
 }
 
-func InitScrapper(client *botclient.Client, repo storage.LinksRepository, scheduler gocron.Scheduler) (*core.Scrapper, error) {
-	scr, err := core.New(client, repo, scheduler)
-	if err != nil {
-		slog.Error("Failed to create scrapper", slog.String("msg", err.Error()))
-		return nil, err
-	}
-
-	return scr, nil
-}
-
-func InitScrapperServer(cfg *config.Config, repo storage.LinksRepository) *http.Server {
+func InitScrapperServer(cfg *config.Config, repo storage.LinksService) *http.Server {
 	api := scrapperapi.New(repo)
 	return scrapperserver.New(cfg, api)
-}
-
-func InitScrapperService(scr *core.Scrapper, srv *http.Server) (*scrapperservice.ScrapperService, error) {
-	service, err := scrapperservice.New(scr, srv)
-	if err != nil {
-		slog.Error("Failed to initialize scrapper service", slog.String("msg", err.Error()))
-		return nil, err
-	}
-
-	return service, nil
 }
 
 func InitTelegramAPI(cfg *config.Config) (*tgbotapi.BotAPI, error) {
@@ -203,4 +186,33 @@ func InitBotService(srv *http.Server, bt *telebot.Bot) (*botservice.BotService, 
 	}
 
 	return service, err
+}
+
+func InitExternalClient() *external.Client {
+	return external.New()
+}
+
+func InitNotifier(
+	repo storage.LinksService,
+	client *external.Client,
+	tgc *tgbotapi.BotAPI,
+	sch gocron.Scheduler,
+) *notifier.Notifier {
+	return notifier.New(repo, client, tgc, sch)
+}
+
+func InitUpdater(
+	repo storage.LinksService,
+	client *external.Client,
+	sch gocron.Scheduler,
+) *updater.Updater {
+	return updater.New(repo, client, sch)
+}
+
+func InitScrapperService(
+	u *updater.Updater,
+	nt *notifier.Notifier,
+	srv *http.Server,
+) *scrapperservice.ScrapperService {
+	return scrapperservice.New(u, nt, srv)
 }

@@ -10,19 +10,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/core"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/notifier"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/updater"
 )
 
 type ScrapperService struct {
-	scr *core.Scrapper
+	upd *updater.Updater
+	nt  *notifier.Notifier
 	srv *http.Server
 }
 
-func New(scr *core.Scrapper, srv *http.Server) (*ScrapperService, error) {
+func New(upd *updater.Updater, nt *notifier.Notifier, srv *http.Server) *ScrapperService {
 	return &ScrapperService{
-		scr: scr,
+		upd: upd,
+		nt:  nt,
 		srv: srv,
-	}, nil
+	}
 }
 
 func (s *ScrapperService) Run() error {
@@ -34,13 +37,15 @@ func (s *ScrapperService) Run() error {
 		}
 	}()
 
-	scrapperErr := make(chan error, 1)
+	notifierErr := make(chan error, 1)
 
 	go func() {
-		if err := s.scr.Run(); err != nil {
-			scrapperErr <- err
+		if err := s.nt.Run(); err != nil {
+			notifierErr <- err
 		}
 	}()
+
+	s.upd.Run()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -52,9 +57,9 @@ func (s *ScrapperService) Run() error {
 			slog.String("msg", err.Error()),
 			slog.String("service", "scrapper"),
 		)
-	case err := <-scrapperErr:
+	case err := <-notifierErr:
 		slog.Error(
-			"scrapper error",
+			"notifier error",
 			slog.String("msg", err.Error()),
 			slog.String("service", "scrapper"),
 		)

@@ -2,20 +2,21 @@ package updater
 
 import (
 	"log/slog"
-	"net/url"
-	"strings"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/go-co-op/gocron/v2"
-	"github.com/google/uuid"
 )
 
+// Updater scrape links batches every n minutes and check for new activity.
+// If new activity found, it updates last_activity_at timestamp.
 type Updater struct {
-	sch        gocron.Scheduler
-	updates    map[int64][]string
 	repository LinksService
 	external   ExternalClient
+	sch        gocron.Scheduler
+	workersNum int
 }
 
 type ExternalClient interface {
@@ -24,180 +25,102 @@ type ExternalClient interface {
 }
 
 type LinksService interface {
-	GetChatIDs() ([]int64, error)
-	GetLinks(int64) (links []models.Link, err error)
+	GetLinks(batchSize uint64) ([]models.Link, error)
+	TouchLink(linkID int64) error
+	UpdateLinkActivity(linkID int64, status bool) error
 }
 
-func New(repository LinksService) *Updater {
+func New(repository LinksService, external ExternalClient, sch gocron.Scheduler) *Updater {
 	return &Updater{
 		repository: repository,
+		external:   external,
+		sch:        sch,
+		workersNum: runtime.GOMAXPROCS(0),
 	}
 }
 
-func (upd *Updater) Run() error {
-	_, err := upd.sch.NewJob(
-		gocron.DurationJob(
-			5*time.Minute,
-		),
-		gocron.NewTask(
-			func() error {
-				return upd.scrapeUpdates()
-			},
-		),
-		gocron.WithEventListeners(
-			gocron.AfterJobRunsWithError(
-				func(jobID uuid.UUID, jobName string, err error) {
-					slog.Error(
-						"job error",
-						slog.String("msg", err.Error()),
-						slog.String("job_id", jobID.String()),
-						slog.String("job_name", jobName),
-						slog.String("service", "scrapper"),
-					)
-				},
-			),
-		),
-	)
-
-	if err != nil {
-		return err
-	}
-
-	upd.sch.Start()
-
-	return nil
+func (upd *Updater) Run() {
+	upd.scrapeLinks()
 }
 
-func (upd *Updater) scrapeUpdates() error {
-	chatIDs, err := upd.repository.GetChatIDs()
-	if err != nil {
-		return err
-	}
+func (upd *Updater) scrapeLinks() {
+	var batchSize uint64 = 1000
 
-	for _, chatID := range chatIDs {
-		links, err := upd.repository.GetLinks(chatID)
+	for {
+		links, err := upd.repository.GetLinks(batchSize)
 		if err != nil {
-			return err
+			slog.Error(
+				"updater: GetLinks failed",
+				slog.String("msg", err.Error()),
+			)
 		}
 
-		slog.Info(
-			"starting updates collection",
-			slog.Int("total_chats", len(chatIDs)),
-			slog.String("service", "scrapper"),
-		)
+		n := len(links)
+		wg := sync.WaitGroup{}
 
-		if err := upd.collectUpdates(links, chatID); err != nil {
-			return err
+		step := n / upd.workersNum
+
+		for off := 0; off < n; off += step {
+			currentOff := off
+			currentEnd := min(n, currentOff+step)
+
+			wg.Add(1)
+
+			go func(start, end int) {
+				upd.processLink(links[start:end])
+				wg.Done()
+			}(currentOff, currentEnd)
 		}
+
+		wg.Wait()
+
+		time.Sleep(5 * time.Minute)
 	}
-
-	return nil
 }
 
-func (upd *Updater) collectUpdates(links []models.Link, chatID int64) error {
-	for _, link := range links {
-		l := *link.Url
+// processLink handles full lifecycle for a single link:
+// 1. Checks for new activity using external APIs
+// 2. Updates last checked timestamp
+// 3. Updates activity status if changes detected
+// Returns error only for fatal processing failures.
+func (upd *Updater) processLink(batch []models.Link) {
+	for _, link := range batch {
+		if link.Url == nil {
+			slog.Info("Updater: link's URL is missing")
+			continue
+		}
 
-		service, err := upd.identifyService(l)
+		updated, err := upd.checkActivity(*link.Url)
 		if err != nil {
-			return err
+			slog.Error(
+				"Updater: failed to check link activity",
+				slog.String("msg", err.Error()),
+			)
+
+			continue
 		}
 
-		switch service {
-		case "github":
-			updated, err := upd.checkForUpdatesGithub(l)
-			if err != nil {
-				return err
-			}
-
-			if !updated {
-				continue
-			}
-		case "stackoverflow":
-			updated, err := upd.checkForUpdatesStackOverflow(l)
-			if err != nil {
-				return err
-			}
-
-			if !updated {
-				continue
-			}
+		if link.Id == nil {
+			slog.Info("Updater: link's id is missing")
+			continue
 		}
 
-		upd.updates[chatID] = append(upd.updates[chatID], l)
+		if err := upd.repository.TouchLink(*link.Id); err != nil {
+			slog.Error(
+				"Updater: failed to update link",
+				slog.String("msg", err.Error()),
+			)
 
-		slog.Info(
-			"Found updates for link",
-			"link", *link.Url,
-			"service", service,
-		)
+			continue
+		}
+
+		if updated {
+			if err := upd.repository.UpdateLinkActivity(*link.Id, updated); err != nil {
+				slog.Error(
+					"Updater: failed to update link activity",
+					slog.String("msg", err.Error()),
+				)
+			}
+		}
 	}
-
-	return nil
-}
-
-func (upd *Updater) checkForUpdatesStackOverflow(link string) (bool, error) {
-	updates, err := upd.external.RetrieveStackOverflowUpdates(link)
-	if err != nil {
-		return false, err
-	}
-
-	if len(updates) == 0 {
-		return false, nil
-	}
-
-	createdAt := time.Unix(updates[0].CreatedAt, 0)
-
-	return createdAt.After(getCutoff()), nil
-}
-
-func (upd *Updater) checkForUpdatesGithub(link string) (bool, error) {
-	updates, err := upd.external.RetrieveGitHubUpdates(link)
-	if err != nil {
-		return false, err
-	}
-
-	if len(updates) == 0 {
-		return false, nil
-	}
-
-	createdAt, err := time.Parse(time.RFC3339, updates[0].CreatedAt)
-	if err != nil {
-		return false, err
-	}
-
-	return createdAt.After(getCutoff()), nil
-}
-
-func (upd *Updater) identifyService(link string) (string, error) {
-	u, err := url.Parse(link)
-	if err != nil {
-		return "", err
-	}
-
-	if strings.Contains(u.Host, "github") {
-		return "github", nil
-	}
-
-	if strings.Contains(u.Host, "stackoverflow") {
-		return "stackoverflow", nil
-	}
-
-	return "", ErrUnknownService
-}
-
-func getCutoff() time.Time {
-	yesterday := time.Now().AddDate(0, 0, -1)
-	cutoff := time.Date(
-		yesterday.Year(),
-		yesterday.Month(),
-		yesterday.Day(),
-		10,
-		0,
-		0,
-		0,
-		yesterday.Location(),
-	)
-
-	return cutoff
 }
