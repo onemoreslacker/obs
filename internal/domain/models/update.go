@@ -2,6 +2,7 @@ package models
 
 // StackOverflowUpdate represents answer/comment activity via tracking link.
 type StackOverflowUpdate struct {
+	Type  string
 	Owner struct {
 		Username string `json:"display_name"`
 	} `json:"owner"`

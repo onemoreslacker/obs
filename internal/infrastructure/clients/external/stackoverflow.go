@@ -15,8 +15,7 @@ type StackOverflowUpdates struct {
 	Items []models.StackOverflowUpdate `json:"items"`
 }
 
-// RetrieveStackOverflowUpdates returns updates from StackOverflow
-// associated with answers and comments.
+// RetrieveStackOverflowUpdates returns updates from StackOverflow associated with answers and comments.
 func (c *Client) RetrieveStackOverflowUpdates(link string) ([]models.StackOverflowUpdate, error) {
 	answersURL, err := buildStackOverflowAPIURL(link, StackOverflowAnswersPath)
 	if err != nil {
@@ -39,14 +38,21 @@ func (c *Client) RetrieveStackOverflowUpdates(link string) ([]models.StackOverfl
 	}
 
 	updates := make([]models.StackOverflowUpdate, 0, len(answers.Items)+len(comments.Items))
-	updates = append(updates, answers.Items...)
-	updates = append(updates, comments.Items...)
+
+	for _, answer := range answers.Items {
+		answer.Type = "answer"
+		updates = append(updates, answer)
+	}
+
+	for _, comment := range comments.Items {
+		comment.Type = "comment"
+		updates = append(updates, comment)
+	}
 
 	return updates, nil
 }
 
-// fetchStackOverflowUpdates fetches updates from StackOverflow,
-// whether it is answers or comments.
+// fetchStackOverflowUpdates fetches updates from StackOverflow, whether it is answers or comments.
 func (c *Client) fetchStackOverflowUpdates(apiURL string) (StackOverflowUpdates, error) {
 	req, err := http.NewRequest(http.MethodGet, apiURL, http.NoBody)
 	if err != nil {

@@ -81,7 +81,7 @@ func buildGitHubAPIURL(link, suffix string) (string, error) {
 	u.Path = path.Join(GitHubBasePath, u.Path, suffix)
 
 	query := u.Query()
-	query.Set("sort", "created")
+	query.Set("sort", "updated")
 	query.Set("direction", "desc")
 	u.RawQuery = query.Encode()
 
