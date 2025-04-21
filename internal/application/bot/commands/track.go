@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
@@ -69,8 +70,10 @@ func (c *CommandTrack) Request() string {
 		Filters: c.link.Filters,
 	}
 
-	resp, err := c.scrapperClient.PostLinks(
-		context.Background(), params, body)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := c.scrapperClient.PostLinks(ctx, params, body)
 	if err != nil {
 		return FailedTrack
 	}

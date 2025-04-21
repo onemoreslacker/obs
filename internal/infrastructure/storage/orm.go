@@ -27,13 +27,13 @@ func NewLinksOrmService(pool *pgxpool.Pool) LinksService {
 }
 
 // AddChat registers a new chat in the system.
-func (l *LinksOrmService) AddChat(chatID int64) error {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) AddChat(ctx context.Context, chatID int64) error {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	sql, args, err := l.sb.Insert("chats").
 		Columns("id").
@@ -43,7 +43,7 @@ func (l *LinksOrmService) AddChat(chatID int64) error {
 		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	result, err := l.pool.Exec(context.Background(), sql, args...)
+	result, err := l.pool.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to insert chat: %w", err)
 	}
@@ -52,7 +52,7 @@ func (l *LinksOrmService) AddChat(chatID int64) error {
 		return scrapperapi.ErrChatAlreadyExists
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -60,13 +60,13 @@ func (l *LinksOrmService) AddChat(chatID int64) error {
 }
 
 // DeleteChat removes a chat and its associated tracking links via cascade.
-func (l *LinksOrmService) DeleteChat(chatID int64) error {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) DeleteChat(ctx context.Context, chatID int64) error {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	sql, args, err := l.sb.Delete("chats").
 		Where(sq.Eq{"id": chatID}).
@@ -75,7 +75,7 @@ func (l *LinksOrmService) DeleteChat(chatID int64) error {
 		return fmt.Errorf("failed to build delete query: %w", err)
 	}
 
-	result, err := tx.Exec(context.Background(), sql, args...)
+	result, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete chat: %w", err)
 	}
@@ -84,7 +84,7 @@ func (l *LinksOrmService) DeleteChat(chatID int64) error {
 		return scrapperapi.ErrChatNotFound
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -92,19 +92,19 @@ func (l *LinksOrmService) DeleteChat(chatID int64) error {
 }
 
 // AddLink adds a new tracking link to a chat.
-func (l *LinksOrmService) AddLink(chatID int64, link models.Link) error {
+func (l *LinksOrmService) AddLink(ctx context.Context, chatID int64, link models.Link) error {
 	if link.Id == nil || link.Url == nil || link.Tags == nil || link.Filters == nil {
 		return scrapperapi.ErrAddLinkInvalidLink
 	}
 
-	tx, err := l.pool.Begin(context.Background())
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := l.chatExists(tx, chatID); err != nil {
+	if err := l.chatExists(ctx, tx, chatID); err != nil {
 		return err
 	}
 
@@ -116,7 +116,7 @@ func (l *LinksOrmService) AddLink(chatID int64, link models.Link) error {
 		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	result, err := tx.Exec(context.Background(), sql, args...)
+	result, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to insert link: %w", err)
 	}
@@ -125,11 +125,11 @@ func (l *LinksOrmService) AddLink(chatID int64, link models.Link) error {
 		return scrapperapi.ErrAddLinkFailed
 	}
 
-	if err := l.addTrackingLink(tx, chatID, *link.Id); err != nil {
+	if err := l.addTrackingLink(ctx, tx, chatID, *link.Id); err != nil {
 		return err
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -137,15 +137,15 @@ func (l *LinksOrmService) AddLink(chatID int64, link models.Link) error {
 }
 
 // GetChatLinks retrieves all active links for a specific chat.
-func (l *LinksOrmService) GetChatLinks(chatID int64, includeAll bool) ([]models.Link, error) {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) GetChatLinks(ctx context.Context, chatID int64, includeAll bool) ([]models.Link, error) {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := l.chatExists(tx, chatID); err != nil {
+	if err := l.chatExists(ctx, tx, chatID); err != nil {
 		return nil, err
 	}
 
@@ -165,7 +165,7 @@ func (l *LinksOrmService) GetChatLinks(chatID int64, includeAll bool) ([]models.
 		return nil, fmt.Errorf("failed to build select query: %w", err)
 	}
 
-	rows, err := l.pool.Query(context.Background(), sql, args...)
+	rows, err := l.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select chat links: %w", err)
 	}
@@ -188,7 +188,7 @@ func (l *LinksOrmService) GetChatLinks(chatID int64, includeAll bool) ([]models.
 		links = append(links, models.NewLink(id, url, tags, filters))
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -196,15 +196,15 @@ func (l *LinksOrmService) GetChatLinks(chatID int64, includeAll bool) ([]models.
 }
 
 // DeleteLink removes a tracking relationship between a chat and a link.
-func (l *LinksOrmService) DeleteLink(chatID int64, url string) error {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) DeleteLink(ctx context.Context, chatID int64, url string) error {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
-	linkID, err := l.getLinkID(tx, url)
+	linkID, err := l.getLinkID(ctx, tx, url)
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func (l *LinksOrmService) DeleteLink(chatID int64, url string) error {
 		return fmt.Errorf("failed to build delete query: %w", err)
 	}
 
-	result, err := tx.Exec(context.Background(), sql, args...)
+	result, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete link: %w", err)
 	}
@@ -228,7 +228,7 @@ func (l *LinksOrmService) DeleteLink(chatID int64, url string) error {
 		return scrapperapi.ErrLinkNotFound
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -236,13 +236,13 @@ func (l *LinksOrmService) DeleteLink(chatID int64, url string) error {
 }
 
 // TouchLink updates the timestamp of a link.
-func (l *LinksOrmService) TouchLink(linkID int64) error {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) TouchLink(ctx context.Context, linkID int64) error {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	sql, args, err := l.sb.Update("links").
 		Set("updated_at", time.Now()).
@@ -252,7 +252,7 @@ func (l *LinksOrmService) TouchLink(linkID int64) error {
 		return fmt.Errorf("failed to build update query: %w", err)
 	}
 
-	result, err := tx.Exec(context.Background(), sql, args...)
+	result, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update link: %w", err)
 	}
@@ -261,7 +261,7 @@ func (l *LinksOrmService) TouchLink(linkID int64) error {
 		return scrapperapi.ErrLinkNotFound
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -269,13 +269,13 @@ func (l *LinksOrmService) TouchLink(linkID int64) error {
 }
 
 // UpdateLinkActivity updates the activity tracking status of a link.
-func (l *LinksOrmService) UpdateLinkActivity(linkID int64, status bool) error {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) UpdateLinkActivity(ctx context.Context, linkID int64, status bool) error {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	sql, args, err := l.sb.Update("links").
 		Set("is_activity_recorded", status).
@@ -285,7 +285,7 @@ func (l *LinksOrmService) UpdateLinkActivity(linkID int64, status bool) error {
 		return fmt.Errorf("failed to build update query: %w", err)
 	}
 
-	result, err := l.pool.Exec(context.Background(), sql, args...)
+	result, err := l.pool.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update link activity: %w", err)
 	}
@@ -294,7 +294,7 @@ func (l *LinksOrmService) UpdateLinkActivity(linkID int64, status bool) error {
 		return scrapperapi.ErrLinkNotFound
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -302,13 +302,13 @@ func (l *LinksOrmService) UpdateLinkActivity(linkID int64, status bool) error {
 }
 
 // GetLinks returns all links being tracked.
-func (l *LinksOrmService) GetLinks(batchSize uint64) ([]models.Link, error) {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) GetLinks(ctx context.Context, batchSize uint64) ([]models.Link, error) {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	sql, args, err := l.sb.Select("id, url, tags, filters").
 		From("links").
@@ -319,7 +319,7 @@ func (l *LinksOrmService) GetLinks(batchSize uint64) ([]models.Link, error) {
 		return nil, fmt.Errorf("failed to build select query: %w", err)
 	}
 
-	rows, err := l.pool.Query(context.Background(), sql, args...)
+	rows, err := l.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select links: %w", err)
 	}
@@ -342,7 +342,7 @@ func (l *LinksOrmService) GetLinks(batchSize uint64) ([]models.Link, error) {
 		links = append(links, models.NewLink(id, url, tags, filters))
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -350,13 +350,13 @@ func (l *LinksOrmService) GetLinks(batchSize uint64) ([]models.Link, error) {
 }
 
 // GetChatsIDs retrieves all registered chat IDs.
-func (l *LinksOrmService) GetChatsIDs() ([]int64, error) {
-	tx, err := l.pool.Begin(context.Background())
+func (l *LinksOrmService) GetChatsIDs(ctx context.Context) ([]int64, error) {
+	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	sql, args, err := l.sb.Select("id").
 		From("chats").
@@ -365,7 +365,7 @@ func (l *LinksOrmService) GetChatsIDs() ([]int64, error) {
 		return nil, fmt.Errorf("failed to build select query: %w", err)
 	}
 
-	rows, err := l.pool.Query(context.Background(), sql, args...)
+	rows, err := l.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select chats ids: %w", err)
 	}
@@ -383,7 +383,7 @@ func (l *LinksOrmService) GetChatsIDs() ([]int64, error) {
 		ids = append(ids, id)
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -391,7 +391,7 @@ func (l *LinksOrmService) GetChatsIDs() ([]int64, error) {
 }
 
 // chatExists checks for chat existence using proper parameter binding.
-func (l *LinksOrmService) chatExists(tx pgx.Tx, chatID int64) error {
+func (l *LinksOrmService) chatExists(ctx context.Context, tx pgx.Tx, chatID int64) error {
 	sql, args, err := l.sb.Select("1").
 		From("chats").
 		Where(sq.Eq{"id": chatID}).
@@ -402,7 +402,7 @@ func (l *LinksOrmService) chatExists(tx pgx.Tx, chatID int64) error {
 	}
 
 	var exists bool
-	if err := tx.QueryRow(context.Background(), sql, args...).Scan(&exists); err != nil {
+	if err := tx.QueryRow(ctx, sql, args...).Scan(&exists); err != nil {
 		return fmt.Errorf("failed to execute existence check: %w", err)
 	}
 
@@ -414,7 +414,7 @@ func (l *LinksOrmService) chatExists(tx pgx.Tx, chatID int64) error {
 }
 
 // getLinkID retrieves link's id.
-func (l *LinksOrmService) getLinkID(tx pgx.Tx, url string) (int64, error) {
+func (l *LinksOrmService) getLinkID(ctx context.Context, tx pgx.Tx, url string) (int64, error) {
 	sql, args, err := l.sb.Select("id").
 		From("links").
 		Where(sq.Eq{"url": url}).
@@ -425,7 +425,7 @@ func (l *LinksOrmService) getLinkID(tx pgx.Tx, url string) (int64, error) {
 
 	var linkID int64
 
-	if err := tx.QueryRow(context.Background(), sql, args...).Scan(&linkID); err != nil {
+	if err := tx.QueryRow(ctx, sql, args...).Scan(&linkID); err != nil {
 		return 0, fmt.Errorf("failed to get link ID: %w", err)
 	}
 
@@ -433,7 +433,7 @@ func (l *LinksOrmService) getLinkID(tx pgx.Tx, url string) (int64, error) {
 }
 
 // addTrackingLink adds link and associated chat to the tracking_links table.
-func (l *LinksOrmService) addTrackingLink(tx pgx.Tx, chatID, linkID int64) error {
+func (l *LinksOrmService) addTrackingLink(ctx context.Context, tx pgx.Tx, chatID, linkID int64) error {
 	sql, args, err := l.sb.Insert("tracking_links").
 		Columns("chat_id", "link_id").
 		Values(chatID, linkID).
@@ -442,7 +442,7 @@ func (l *LinksOrmService) addTrackingLink(tx pgx.Tx, chatID, linkID int64) error
 		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	_, err = tx.Exec(context.Background(), sql, args...)
+	_, err = tx.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to create tracking relationship: %w", err)
 	}

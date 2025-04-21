@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/notifier"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/updater"
@@ -28,7 +27,7 @@ func New(upd *updater.Updater, nt *notifier.Notifier, srv *http.Server) *Scrappe
 	}
 }
 
-func (s *ScrapperService) Run() error {
+func (s *ScrapperService) Run(ctx context.Context) error {
 	srvErr := make(chan error, 1)
 
 	go func() {
@@ -40,12 +39,12 @@ func (s *ScrapperService) Run() error {
 	notifierErr := make(chan error, 1)
 
 	go func() {
-		if err := s.nt.Run(); err != nil {
+		if err := s.nt.Run(ctx); err != nil {
 			notifierErr <- err
 		}
 	}()
 
-	s.upd.Run()
+	s.upd.Run(ctx)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -70,9 +69,6 @@ func (s *ScrapperService) Run() error {
 			slog.String("service", "scrapper"),
 		)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
 
 	if err := s.srv.Shutdown(ctx); err != nil {
 		return err

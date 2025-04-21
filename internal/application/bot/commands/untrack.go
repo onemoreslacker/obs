@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
@@ -67,8 +68,10 @@ func (c *CommandUntrack) Request() string {
 		Link: c.link.Url,
 	}
 
-	resp, err := c.scrapperClient.DeleteLinks(
-		context.Background(), params, body)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := c.scrapperClient.DeleteLinks(ctx, params, body)
 	if err != nil {
 		return FailedUntrack
 	}
