@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 
@@ -22,7 +23,7 @@ func NewLinksInMemoryService() *LinksInMemoryService {
 }
 
 // AddChat creates a map of links for a new chat.
-func (r *LinksInMemoryService) AddChat(chatID int64) error {
+func (r *LinksInMemoryService) AddChat(_ context.Context, chatID int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -36,7 +37,7 @@ func (r *LinksInMemoryService) AddChat(chatID int64) error {
 }
 
 // DeleteChat deletes all links for the provided chat.
-func (r *LinksInMemoryService) DeleteChat(chatID int64) error {
+func (r *LinksInMemoryService) DeleteChat(_ context.Context, chatID int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -50,7 +51,7 @@ func (r *LinksInMemoryService) DeleteChat(chatID int64) error {
 }
 
 // AddLink adds new tracking link.
-func (r *LinksInMemoryService) AddLink(chatID int64, link models.Link) error {
+func (r *LinksInMemoryService) AddLink(_ context.Context, chatID int64, link models.Link) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -78,7 +79,7 @@ func (r *LinksInMemoryService) AddLink(chatID int64, link models.Link) error {
 }
 
 // GetChatLinks retrieves links attached to the chat id.
-func (r *LinksInMemoryService) GetChatLinks(chatID int64, _ bool) ([]models.Link, error) {
+func (r *LinksInMemoryService) GetChatLinks(_ context.Context, chatID int64, _ bool) ([]models.Link, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -97,7 +98,7 @@ func (r *LinksInMemoryService) GetChatLinks(chatID int64, _ bool) ([]models.Link
 }
 
 // DeleteLink deletes link attached to the chat id.
-func (r *LinksInMemoryService) DeleteLink(chatID int64, url string) error {
+func (r *LinksInMemoryService) DeleteLink(_ context.Context, chatID int64, url string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -118,7 +119,7 @@ func (r *LinksInMemoryService) DeleteLink(chatID int64, url string) error {
 }
 
 // GetChatIDs returns all the registered chat IDs.
-func (r *LinksInMemoryService) GetChatIDs() ([]int64, error) {
+func (r *LinksInMemoryService) GetChatIDs(_ context.Context) ([]int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -131,7 +132,7 @@ func (r *LinksInMemoryService) GetChatIDs() ([]int64, error) {
 }
 
 // GetLinks returns all tracking links.
-func (r *LinksInMemoryService) GetLinks(batchSize uint64) ([]models.Link, error) {
+func (r *LinksInMemoryService) GetLinks(_ context.Context, batchSize uint64) ([]models.Link, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -150,16 +151,16 @@ func (r *LinksInMemoryService) GetLinks(batchSize uint64) ([]models.Link, error)
 	return links, nil
 }
 
-func (r *LinksInMemoryService) TouchLink(_ int64) error {
+func (r *LinksInMemoryService) TouchLink(_ context.Context, _ int64) error {
 	return nil
 }
 
-func (r *LinksInMemoryService) UpdateLinkActivity(_ int64, _ bool) error {
+func (r *LinksInMemoryService) UpdateLinkActivity(_ context.Context, _ int64, _ bool) error {
 	return nil
 }
 
 // GetChatsIDs returns all the registered chat IDs.
-func (r *LinksInMemoryService) GetChatsIDs() ([]int64, error) {
+func (r *LinksInMemoryService) GetChatsIDs(_ context.Context) ([]int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

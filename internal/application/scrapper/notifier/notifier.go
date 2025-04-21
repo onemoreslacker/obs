@@ -1,8 +1,8 @@
 package notifier
 
 import (
+	"context"
 	"fmt"
-
 	"log/slog"
 	"runtime"
 	"strings"
@@ -10,38 +10,34 @@ import (
 	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	botclient "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/bot"
 	"github.com/es-debug/backend-academy-2024-go-template/pkg"
 	"github.com/go-co-op/gocron/v2"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // Notifier handles notification delivery to users about updates in their tracked resources.
 type Notifier struct {
 	repository LinksService
 	external   ExternalClient
-	sender     Sender
+	sender     botclient.ClientInterface
 	sch        gocron.Scheduler
 	guard      chan struct{}
 }
 
 // TODO: update external client interface in order to fetch only the newest activity (accept timestamp).
 type ExternalClient interface {
-	RetrieveStackOverflowUpdates(link string) ([]models.StackOverflowUpdate, error)
-	RetrieveGitHubUpdates(link string) ([]models.GitHubUpdate, error)
+	RetrieveStackOverflowUpdates(ctx context.Context, link string) ([]models.StackOverflowUpdate, error)
+	RetrieveGitHubUpdates(ctx context.Context, link string) ([]models.GitHubUpdate, error)
 }
 
 type LinksService interface {
-	GetChatLinks(chatID int64, includeAll bool) ([]models.Link, error)
-	UpdateLinkActivity(linkID int64, status bool) error
-	GetChatsIDs() ([]int64, error)
-}
-
-type Sender interface {
-	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
+	GetChatLinks(ctx context.Context, chatID int64, includeAll bool) ([]models.Link, error)
+	UpdateLinkActivity(ctx context.Context, linkID int64, status bool) error
+	GetChatsIDs(ctx context.Context) ([]int64, error)
 }
 
 // New instantiates a new Notifier entity.
-func New(repository LinksService, external ExternalClient, sender Sender, sch gocron.Scheduler) *Notifier {
+func New(repository LinksService, external ExternalClient, sender botclient.ClientInterface, sch gocron.Scheduler) *Notifier {
 	return &Notifier{
 		repository: repository,
 		external:   external,
@@ -51,7 +47,7 @@ func New(repository LinksService, external ExternalClient, sender Sender, sch go
 	}
 }
 
-func (n *Notifier) Run() error {
+func (n *Notifier) Run(ctx context.Context) error {
 	_, err := n.sch.NewJob(
 		gocron.DailyJob(
 			1,
@@ -61,7 +57,7 @@ func (n *Notifier) Run() error {
 		),
 		gocron.NewTask(
 			func() {
-				n.PushUpdates()
+				n.PushUpdates(ctx)
 			},
 		),
 	)
@@ -75,8 +71,11 @@ func (n *Notifier) Run() error {
 	return nil
 }
 
-func (n *Notifier) PushUpdates() {
-	chatIDs, err := n.repository.GetChatsIDs()
+func (n *Notifier) PushUpdates(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	chatIDs, err := n.repository.GetChatsIDs(ctx)
 	if err != nil {
 		slog.Error(
 			"Notifier: failed to get chat IDs",
@@ -96,7 +95,7 @@ func (n *Notifier) PushUpdates() {
 				wg.Done()
 			}()
 
-			if err := n.processChatID(id); err != nil {
+			if err := n.processChatID(ctx, id); err != nil {
 				slog.Error("Processing failed",
 					slog.Int64("chat_id", id),
 					slog.String("error", err.Error()))
@@ -113,8 +112,11 @@ func (n *Notifier) PushUpdates() {
 // 3. Sends notifications
 // 4. Marks links as processed
 // Returns error if fatal processing failure occurs.
-func (n *Notifier) processChatID(chatID int64) error {
-	links, err := n.repository.GetChatLinks(chatID, false)
+func (n *Notifier) processChatID(ctx context.Context, chatID int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	links, err := n.repository.GetChatLinks(ctx, chatID, false)
 	if err != nil {
 		return fmt.Errorf("failed to get chat links: %w", err)
 	}
@@ -135,9 +137,9 @@ func (n *Notifier) processChatID(chatID int64) error {
 			continue
 		}
 
-		if _, err := n.sender.Send(tgbotapi.NewMessage(chatID, msg)); err != nil {
+		if err := n.SendUpdates(ctx, chatID, *link.Url, msg); err != nil {
 			slog.Error(
-				"Notifier: failed to send message to telegram",
+				"notifier: failed to send message to telegram",
 				slog.String("msg", err.Error()),
 			)
 
@@ -149,14 +151,17 @@ func (n *Notifier) processChatID(chatID int64) error {
 			continue
 		}
 
-		if err := n.repository.UpdateLinkActivity(*link.Id, false); err != nil {
-			slog.Error(
-				"notifier: failed to update link activity",
-				slog.String("msg", err.Error()),
-			)
+		func() {
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
 
-			continue
-		}
+			if err := n.repository.UpdateLinkActivity(ctx, *link.Id, false); err != nil {
+				slog.Error(
+					"notifier: failed to update link activity",
+					slog.String("msg", err.Error()),
+				)
+			}
+		}()
 	}
 
 	return nil
@@ -188,7 +193,10 @@ func (n *Notifier) serializeMessage(url string) (string, error) {
 
 // serializeMessageGitHub formats retrieved GitHub update in an appropriate way.
 func (n *Notifier) serializeMessageGitHub(url string) (string, error) {
-	updates, err := n.external.RetrieveGitHubUpdates(url)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	updates, err := n.external.RetrieveGitHubUpdates(ctx, url)
 	if err != nil {
 		return "", fmt.Errorf("failed to retrieve github updates: %w", err)
 	}
@@ -211,7 +219,10 @@ func (n *Notifier) serializeMessageGitHub(url string) (string, error) {
 
 // serializeMessageStackOverflow formats retrieved StackOverflow update in an appropriate way.
 func (n *Notifier) serializeMessageStackOverflow(url string) (string, error) {
-	updates, err := n.external.RetrieveStackOverflowUpdates(url)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	updates, err := n.external.RetrieveStackOverflowUpdates(ctx, url)
 	if err != nil {
 		return "", fmt.Errorf("failed to retrieve stackoverflow updates: %w", err)
 	}

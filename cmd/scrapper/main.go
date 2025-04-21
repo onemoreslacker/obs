@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bootstrap"
@@ -30,7 +31,7 @@ func main() {
 		) error {
 			defer pool.Close()
 
-			if err := service.Run(); err != nil {
+			if err := service.Run(context.Background()); err != nil {
 				slog.Error(
 					"scrapper service is down",
 					slog.String("msg", err.Error()),

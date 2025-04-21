@@ -17,15 +17,15 @@ import (
 )
 
 type LinksService interface {
-	AddChat(chatID int64) error
-	DeleteChat(chatID int64) error
-	AddLink(chatID int64, link models.Link) error
-	GetChatLinks(chatID int64, includeAll bool) ([]models.Link, error)
-	DeleteLink(chatID int64, url string) error
-	GetLinks(batchSize uint64) ([]models.Link, error)
-	TouchLink(linkID int64) error
-	UpdateLinkActivity(linkID int64, status bool) error
-	GetChatsIDs() ([]int64, error)
+	AddChat(ctx context.Context, chatID int64) error
+	DeleteChat(ctx context.Context, chatID int64) error
+	AddLink(ctx context.Context, chatID int64, link models.Link) error
+	GetChatLinks(ctx context.Context, chatID int64, includeAll bool) ([]models.Link, error)
+	DeleteLink(ctx context.Context, chatID int64, url string) error
+	GetLinks(ctx context.Context, batchSize uint64) ([]models.Link, error)
+	TouchLink(ctx context.Context, linkID int64) error
+	UpdateLinkActivity(ctx context.Context, linkID int64, status bool) error
+	GetChatsIDs(ctx context.Context) ([]int64, error)
 }
 
 func New(cfg *config.Config, pool *pgxpool.Pool) (LinksService, error) {

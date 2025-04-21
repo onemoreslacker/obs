@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"context"
 	"log/slog"
 	"runtime"
 	"sync"
@@ -13,52 +14,89 @@ import (
 // Updater scrape links batches every n minutes and check for new activity.
 // If new activity found, it updates last_activity_at timestamp.
 type Updater struct {
-	repository LinksService
 	external   ExternalClient
+	repository LinksService
 	sch        gocron.Scheduler
+	cfg        updaterConfig
+}
+
+type Option func(cfg *updaterConfig)
+
+func WithCustomBatchSize(batchSize uint64) Option {
+	return func(cfg *updaterConfig) {
+		cfg.batchSize = batchSize
+	}
+}
+
+func WithCustomWorkersNumber(workersNum int) Option {
+	return func(cfg *updaterConfig) {
+		cfg.workersNum = workersNum
+	}
+}
+
+type updaterConfig struct {
+	batchSize  uint64
 	workersNum int
 }
 
 type ExternalClient interface {
-	RetrieveStackOverflowUpdates(link string) ([]models.StackOverflowUpdate, error)
-	RetrieveGitHubUpdates(link string) ([]models.GitHubUpdate, error)
+	RetrieveStackOverflowUpdates(ctx context.Context, link string) ([]models.StackOverflowUpdate, error)
+	RetrieveGitHubUpdates(ctx context.Context, link string) ([]models.GitHubUpdate, error)
 }
 
 type LinksService interface {
-	GetLinks(batchSize uint64) ([]models.Link, error)
-	TouchLink(linkID int64) error
-	UpdateLinkActivity(linkID int64, status bool) error
+	GetLinks(ctx context.Context, batchSize uint64) ([]models.Link, error)
+	TouchLink(ctx context.Context, linkID int64) error
+	UpdateLinkActivity(ctx context.Context, linkID int64, status bool) error
 }
 
-func New(repository LinksService, external ExternalClient, sch gocron.Scheduler) *Updater {
-	return &Updater{
-		repository: repository,
-		external:   external,
-		sch:        sch,
+// New instantiates a new Updater entity.
+func New(repository LinksService, external ExternalClient, sch gocron.Scheduler, opts ...Option) *Updater {
+	cfg := updaterConfig{
+		batchSize:  1000,
 		workersNum: runtime.GOMAXPROCS(0),
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &Updater{
+		external:   external,
+		repository: repository,
+		sch:        sch,
+		cfg:        cfg,
 	}
 }
 
-func (upd *Updater) Run() {
-	upd.scrapeLinks()
+func (upd *Updater) Run(ctx context.Context) {
+	upd.scrapeLinks(ctx)
 }
 
-func (upd *Updater) scrapeLinks() {
-	var batchSize uint64 = 1000
-
+func (upd *Updater) scrapeLinks(ctx context.Context) {
 	for {
-		links, err := upd.repository.GetLinks(batchSize)
-		if err != nil {
-			slog.Error(
-				"updater: GetLinks failed",
-				slog.String("msg", err.Error()),
-			)
-		}
+		var (
+			links []models.Link
+			err   error
+		)
+
+		func() {
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+
+			links, err = upd.repository.GetLinks(ctx, upd.cfg.batchSize)
+			if err != nil {
+				slog.Error(
+					"updater: GetLinks failed",
+					slog.String("msg", err.Error()),
+				)
+			}
+		}()
 
 		n := len(links)
 		wg := sync.WaitGroup{}
 
-		step := n / upd.workersNum
+		step := n / upd.cfg.workersNum
 
 		for off := 0; off < n; off += step {
 			currentOff := off
@@ -67,14 +105,19 @@ func (upd *Updater) scrapeLinks() {
 			wg.Add(1)
 
 			go func(start, end int) {
-				upd.processLink(links[start:end])
-				wg.Done()
+				defer wg.Done()
+				upd.processLink(ctx, links[start:end])
 			}(currentOff, currentEnd)
 		}
 
 		wg.Wait()
 
-		time.Sleep(5 * time.Minute)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Minute):
+
+		}
 	}
 }
 
@@ -83,17 +126,17 @@ func (upd *Updater) scrapeLinks() {
 // 2. Updates last checked timestamp
 // 3. Updates activity status if changes detected
 // Returns error only for fatal processing failures.
-func (upd *Updater) processLink(batch []models.Link) {
+func (upd *Updater) processLink(ctx context.Context, batch []models.Link) {
 	for _, link := range batch {
 		if link.Url == nil {
-			slog.Info("Updater: link's URL is missing")
+			slog.Info("updater: link's URL is missing")
 			continue
 		}
 
-		updated, err := upd.checkActivity(*link.Url)
+		updated, err := upd.checkActivity(ctx, *link.Url)
 		if err != nil {
 			slog.Error(
-				"Updater: failed to check link activity",
+				"updater: failed to check link activity",
 				slog.String("msg", err.Error()),
 			)
 
@@ -101,23 +144,32 @@ func (upd *Updater) processLink(batch []models.Link) {
 		}
 
 		if link.Id == nil {
-			slog.Info("Updater: link's id is missing")
+			slog.Info("updater: link's id is missing")
 			continue
 		}
 
-		if err := upd.repository.TouchLink(*link.Id); err != nil {
+		if err := func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			return upd.repository.TouchLink(ctx, *link.Id)
+		}(); err != nil {
 			slog.Error(
-				"Updater: failed to update link",
+				"updater: failed to update link",
 				slog.String("msg", err.Error()),
 			)
-
 			continue
 		}
 
 		if updated {
-			if err := upd.repository.UpdateLinkActivity(*link.Id, updated); err != nil {
+			if err := func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+
+				return upd.repository.UpdateLinkActivity(ctx, *link.Id, updated)
+			}(); err != nil {
 				slog.Error(
-					"Updater: failed to update link activity",
+					"updater: failed to update link activity",
 					slog.String("msg", err.Error()),
 				)
 			}

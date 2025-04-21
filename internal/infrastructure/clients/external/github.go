@@ -1,10 +1,12 @@
 package external
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
 	"path"
+	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
@@ -13,13 +15,13 @@ type GitHubUpdates struct {
 	Items []models.GitHubUpdate `json:"items"`
 }
 
-func (c *Client) RetrieveGitHubUpdates(link string) ([]models.GitHubUpdate, error) {
+func (c *Client) RetrieveGitHubUpdates(ctx context.Context, link string) ([]models.GitHubUpdate, error) {
 	prURL, err := buildGitHubAPIURL(link, GitHubPRSuffix)
 	if err != nil {
 		return nil, err
 	}
 
-	pulls, err := c.fetchGitHubUpdates(prURL)
+	pulls, err := c.fetchGitHubUpdates(ctx, prURL)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +31,7 @@ func (c *Client) RetrieveGitHubUpdates(link string) ([]models.GitHubUpdate, erro
 		return nil, err
 	}
 
-	issues, err := c.fetchGitHubUpdates(issuesURL)
+	issues, err := c.fetchGitHubUpdates(ctx, issuesURL)
 	if err != nil {
 		return nil, err
 	}
@@ -42,8 +44,11 @@ func (c *Client) RetrieveGitHubUpdates(link string) ([]models.GitHubUpdate, erro
 	return updates, nil
 }
 
-func (c *Client) fetchGitHubUpdates(apiURL string) (GitHubUpdates, error) {
-	req, err := http.NewRequest(http.MethodGet, apiURL, http.NoBody)
+func (c *Client) fetchGitHubUpdates(ctx context.Context, apiURL string) (GitHubUpdates, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
 		return GitHubUpdates{}, err
 	}

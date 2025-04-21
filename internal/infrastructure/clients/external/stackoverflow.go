@@ -1,11 +1,13 @@
 package external
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
@@ -16,13 +18,13 @@ type StackOverflowUpdates struct {
 }
 
 // RetrieveStackOverflowUpdates returns updates from StackOverflow associated with answers and comments.
-func (c *Client) RetrieveStackOverflowUpdates(link string) ([]models.StackOverflowUpdate, error) {
+func (c *Client) RetrieveStackOverflowUpdates(ctx context.Context, link string) ([]models.StackOverflowUpdate, error) {
 	answersURL, err := buildStackOverflowAPIURL(link, StackOverflowAnswersPath)
 	if err != nil {
 		return nil, err
 	}
 
-	answers, err := c.fetchStackOverflowUpdates(answersURL)
+	answers, err := c.fetchStackOverflowUpdates(ctx, answersURL)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +34,7 @@ func (c *Client) RetrieveStackOverflowUpdates(link string) ([]models.StackOverfl
 		return nil, err
 	}
 
-	comments, err := c.fetchStackOverflowUpdates(commentsURL)
+	comments, err := c.fetchStackOverflowUpdates(ctx, commentsURL)
 	if err != nil {
 		return nil, err
 	}
@@ -53,8 +55,11 @@ func (c *Client) RetrieveStackOverflowUpdates(link string) ([]models.StackOverfl
 }
 
 // fetchStackOverflowUpdates fetches updates from StackOverflow, whether it is answers or comments.
-func (c *Client) fetchStackOverflowUpdates(apiURL string) (StackOverflowUpdates, error) {
-	req, err := http.NewRequest(http.MethodGet, apiURL, http.NoBody)
+func (c *Client) fetchStackOverflowUpdates(ctx context.Context, apiURL string) (StackOverflowUpdates, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
 		return StackOverflowUpdates{}, err
 	}

@@ -3,6 +3,9 @@ package commands
 import (
 	"bytes"
 	"fmt"
+	"net/url"
+	"slices"
+	"strings"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
@@ -28,4 +31,76 @@ func constructListMessage(links []models.Link) string {
 	}
 
 	return buf.String()
+}
+
+func matchTags(got, desired []string) bool {
+	if len(got) != len(desired) {
+		return false
+	}
+
+	for _, tag := range desired {
+		if !slices.Contains(got, tag) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func matchFilters(got, desired []string) bool {
+	if len(got) != len(desired) {
+		return false
+	}
+
+	for _, filter := range desired {
+		if !slices.Contains(got, filter) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func ValidateLink(link string) error {
+	_, err := url.Parse(link)
+	if err != nil {
+		return ErrInvalidLinkFormat
+	}
+
+	if !((strings.Contains(link, "stackoverflow") && strings.Contains(link, "questions")) ||
+		strings.Contains(link, "github")) {
+		return ErrInvalidLinkFormat
+	}
+
+	return nil
+}
+
+func validateAck(input string) error {
+	if !slices.Contains([]string{"yes", "no"},
+		strings.ToLower(strings.TrimSpace(input))) {
+		return ErrInvalidAck
+	}
+
+	return nil
+}
+
+func validateTags(input string) error {
+	if !(input == "" || len(strings.Fields(input)) > 0) {
+		return ErrInvalidTagsFormat
+	}
+
+	return nil
+}
+
+func validateFilters(input string) error {
+	filters := strings.Fields(input)
+
+	for _, filter := range filters {
+		pair := strings.Split(filter, ":")
+		if len(pair) != 2 {
+			return ErrInvalidFiltesFormat
+		}
+	}
+
+	return nil
 }

@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"flag"
-
 	"log/slog"
 	"net"
 	"net/http"
@@ -73,7 +72,7 @@ func InitRepository(cfg *config.Config, pool *pgxpool.Pool) (storage.LinksServic
 	return repository, nil
 }
 
-func InitBotClient(cfg *config.Config) (*botclient.Client, error) {
+func InitBotClient(cfg *config.Config) (botclient.ClientInterface, error) {
 	server := url.URL{
 		Scheme: "http",
 		Host:   net.JoinHostPort(cfg.Serving.BotHost, cfg.Serving.BotPort),
@@ -81,7 +80,7 @@ func InitBotClient(cfg *config.Config) (*botclient.Client, error) {
 
 	client, err := botclient.NewClient(server.String())
 	if err != nil {
-		slog.Error("Failed to create bot client", slog.String("msg", err.Error()))
+		slog.Error("failed to create bot client", slog.String("msg", err.Error()))
 		return nil, err
 	}
 
@@ -142,7 +141,12 @@ func InitBotCommands(tgc *tgbotapi.BotAPI) error {
 }
 
 func InitScrapperClient(cfg *config.Config) (scrcl.ClientInterface, error) {
-	client, err := scrcl.NewClient("http://" + net.JoinHostPort(cfg.Serving.ScrapperHost, cfg.Serving.ScrapperPort))
+	server := url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(cfg.Serving.ScrapperHost, cfg.Serving.ScrapperPort),
+	}
+
+	client, err := scrcl.NewClient(server.String())
 	if err != nil {
 		slog.Error(
 			"Failed to create scrapper client",
@@ -195,10 +199,10 @@ func InitExternalClient() *external.Client {
 func InitNotifier(
 	repo storage.LinksService,
 	client *external.Client,
-	tgc *tgbotapi.BotAPI,
+	bc botclient.ClientInterface,
 	sch gocron.Scheduler,
 ) *notifier.Notifier {
-	return notifier.New(repo, client, tgc, sch)
+	return notifier.New(repo, client, bc, sch)
 }
 
 func InitUpdater(
