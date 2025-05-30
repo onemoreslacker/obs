@@ -1,6 +1,0 @@
--- +goose Up
-CREATE TABLE IF NOT EXISTS chats (
-    id BIGINT PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
