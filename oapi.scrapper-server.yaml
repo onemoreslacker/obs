@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/main/configuration-schema.json
+package: scrapperapi
+generate:
+    std-http-server: true
+    models: true
+output: ./internal/api/openapi/v1/servers/scrapper/server.gen.go

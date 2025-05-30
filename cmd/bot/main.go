@@ -1,39 +1,30 @@
 package main
 
 import (
-	"log/slog"
+	"context"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bootstrap"
-	botservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/service"
+	binit "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/init"
+	bs "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/service"
 	"go.uber.org/fx"
 )
 
 func main() {
 	app := fx.New(
 		fx.Decorate(
-			bootstrap.InitBotCommands,
+			binit.BotCommands,
 		),
 		fx.Provide(
-			bootstrap.LoadConfig,
-			bootstrap.InitTelegramAPI,
-			bootstrap.InitScrapperClient,
-			bootstrap.InitTelebot,
-			bootstrap.InitBotServer,
-			bootstrap.InitBotService,
+			binit.Config,
+			binit.TelegramAPI,
+			binit.ScrapperClient,
+			binit.Telebot,
+			binit.BotServer,
+			binit.BotService,
 		),
 		fx.Invoke(func(
-			service *botservice.BotService,
+			service *bs.BotService,
 		) error {
-			if err := service.Run(); err != nil {
-				slog.Error(
-					"Bot: service is down",
-					slog.String("msg", err.Error()),
-				)
-
-				return err
-			}
-
-			return nil
+			return service.Run(context.Background())
 		}),
 	)
 

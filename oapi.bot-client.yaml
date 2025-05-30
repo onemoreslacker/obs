@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/main/configuration-schema.json
+package: botclient
+generate:
+    models: true
+    client: true
+output: ./internal/api/openapi/v1/clients/bot/client.gen.go

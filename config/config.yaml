@@ -1,8 +1,0 @@
-env: prod
-serving:
-    scrapper-host: scrapper
-    bot-host: bot
-    scrapper-port: 8080
-    bot-port: 8081
-database:
-    access-type: sql

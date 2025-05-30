@@ -2,40 +2,50 @@ package updater
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/es-debug/backend-academy-2024-go-template/pkg"
 )
 
-func (upd *Updater) checkActivity(ctx context.Context, url string) (bool, error) {
+type Option func(cfg *updaterConfig)
+
+func WithCustomBatchSize(batchSize uint64) Option {
+	return func(cfg *updaterConfig) {
+		cfg.batchSize = batchSize
+	}
+}
+
+func WithCustomWorkersNumber(workersNum int) Option {
+	return func(cfg *updaterConfig) {
+		cfg.workersNum = workersNum
+	}
+}
+
+type updaterConfig struct {
+	batchSize  uint64
+	workersNum int
+}
+
+func (upd *Updater) CheckActivity(ctx context.Context, url string) (bool, error) {
 	var (
-		updated bool
+		updates []models.Update
 		err     error
 	)
 
 	service, err := pkg.ServiceFromURL(url)
 	if err != nil {
-		return updated, err
+		return false, err
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 
 	switch service {
-	case "github":
-		updated, err = upd.checkForUpdatesGithub(ctx, url)
-	case "stackoverflow":
-		updated, err = upd.checkForUpdatesStackOverflow(ctx, url)
-	default:
-		return false, fmt.Errorf("failed to check for updates: %w", ErrUnknownService)
+	case config.GitHub:
+		updates, err = upd.GitHub.RetrieveUpdates(ctx, url)
+	case config.StackOverflow:
+		updates, err = upd.Stack.RetrieveUpdates(ctx, url)
 	}
 
-	return updated, err
-}
-
-func (upd *Updater) checkForUpdatesGithub(ctx context.Context, link string) (bool, error) {
-	updates, err := upd.external.RetrieveGitHubUpdates(ctx, link)
 	if err != nil {
 		return false, err
 	}
@@ -48,21 +58,6 @@ func (upd *Updater) checkForUpdatesGithub(ctx context.Context, link string) (boo
 	if err != nil {
 		return false, err
 	}
-
-	return createdAt.After(getCutoff()), nil
-}
-
-func (upd *Updater) checkForUpdatesStackOverflow(ctx context.Context, link string) (bool, error) {
-	updates, err := upd.external.RetrieveStackOverflowUpdates(ctx, link)
-	if err != nil {
-		return false, err
-	}
-
-	if len(updates) == 0 {
-		return false, nil
-	}
-
-	createdAt := time.Unix(updates[0].CreatedAt, 0)
 
 	return createdAt.After(getCutoff()), nil
 }

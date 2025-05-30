@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 )
 
 const (
@@ -23,17 +23,17 @@ const (
 	FiltersManual = "💥 Invalid format! Use 'filter:value' (e.g. 'user:dummy')."
 )
 
-func constructListMessage(links []models.Link) string {
+func ConstructListMessage(links []sclient.LinkResponse) string {
 	var buf bytes.Buffer
 
 	for i, link := range links {
-		fmt.Fprintf(&buf, "%d. %s\n", i+1, *link.Url)
+		fmt.Fprintf(&buf, "%d. %s\n", i+1, link.Url)
 	}
 
 	return buf.String()
 }
 
-func matchTags(got, desired []string) bool {
+func MatchTags(got, desired []string) bool {
 	if len(got) != len(desired) {
 		return false
 	}
@@ -47,7 +47,7 @@ func matchTags(got, desired []string) bool {
 	return true
 }
 
-func matchFilters(got, desired []string) bool {
+func MatchFilters(got, desired []string) bool {
 	if len(got) != len(desired) {
 		return false
 	}
@@ -75,7 +75,7 @@ func ValidateLink(link string) error {
 	return nil
 }
 
-func validateAck(input string) error {
+func ValidateAck(input string) error {
 	if !slices.Contains([]string{"yes", "no"},
 		strings.ToLower(strings.TrimSpace(input))) {
 		return ErrInvalidAck
@@ -84,7 +84,7 @@ func validateAck(input string) error {
 	return nil
 }
 
-func validateTags(input string) error {
+func ValidateTags(input string) error {
 	if !(input == "" || len(strings.Fields(input)) > 0) {
 		return ErrInvalidTagsFormat
 	}
@@ -92,13 +92,13 @@ func validateTags(input string) error {
 	return nil
 }
 
-func validateFilters(input string) error {
+func ValidateFilters(input string) error {
 	filters := strings.Fields(input)
 
 	for _, filter := range filters {
 		pair := strings.Split(filter, ":")
 		if len(pair) != 2 {
-			return ErrInvalidFiltesFormat
+			return ErrInvalidFiltersFormat
 		}
 	}
 
