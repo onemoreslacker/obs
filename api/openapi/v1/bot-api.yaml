@@ -1,0 +1,53 @@
+openapi: "3.0.0"
+info:
+  title: Bot API
+  version: 1.0.0
+paths:
+  /updates:
+    post:
+      summary: Отправить обновление
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkUpdate'
+        required: true
+      responses:
+        '200':
+          description: Обновление обработано
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+components:
+  schemas:
+    ApiErrorResponse:
+      type: object
+      required:
+        - description
+        - code
+        - errorMessage
+      properties:
+        description:
+          type: string
+        code:
+          type: integer
+        errorMessage:
+          type: string
+    LinkUpdate:
+      type: object
+      required:
+        - url
+        - description
+        - tgChatId
+      properties:
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+        tgChatId:
+          type: integer
+          format: int64

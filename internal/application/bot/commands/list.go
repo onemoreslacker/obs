@@ -6,141 +6,111 @@ import (
 	"net/http"
 	"time"
 
+	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
-	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 )
 
-type CommandList struct {
-	traits *models.Traits
-
-	pipeline []*models.Stage
-	link     models.Link
-
-	scrapperClient scrcl.ClientInterface
+type Retriever interface {
+	GetLinks(ctx context.Context, params *sclient.GetLinksParams,
+		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
 }
 
-func NewCommandList(
-	chatID int64,
-	client scrcl.ClientInterface,
-) *CommandList {
-	return &CommandList{
-		traits: models.NewTraits(
-			listSpan,
-			chatID,
-			list,
-		),
-		pipeline:       createListStages(),
-		scrapperClient: client,
+type List struct {
+	Traits   *models.Traits
+	Pipeline []*models.Stage
+	Link     sclient.AddLinkRequest
+	Client   Retriever
+}
+
+func NewList(chatID int64, client Retriever) *List {
+	return &List{
+		Traits:   models.NewTraits(ListSpan, chatID, CommandList),
+		Pipeline: createListStages(),
+		Client:   client,
 	}
 }
 
-func (c *CommandList) Validate(input string) error {
-	if err := c.pipeline[c.traits.Stage].Validate(input); err != nil {
-		c.traits.Malformed = true
+func (c *List) Validate(input string) error {
+	if err := c.Pipeline[c.Traits.Stage].Validate(input); err != nil {
+		c.Traits.Malformed = true
 		return err
 	}
 
-	c.traits.HandleList(input, &c.link)
+	c.Traits.HandleList(input, &c.Link)
 
 	return nil
 }
 
-func (c *CommandList) Stage() (string, bool) {
-	keyboard := c.traits.Stage == 0 || c.traits.Stage == 2
+func (c *List) Stage() (string, bool) {
+	keyboard := c.Traits.Stage == 0 || c.Traits.Stage == 2
 
-	if !c.traits.Malformed {
-		return c.pipeline[c.traits.Stage].Prompt, keyboard
+	if !c.Traits.Malformed {
+		return c.Pipeline[c.Traits.Stage].Prompt, keyboard
 	}
 
-	return c.pipeline[c.traits.Stage].Manual, keyboard
+	return c.Pipeline[c.Traits.Stage].Manual, keyboard
 }
 
-func (c *CommandList) Done() bool {
-	return c.traits.Stage == c.traits.Span
+func (c *List) Done() bool {
+	return c.Traits.Stage == c.Traits.Span
 }
 
-func (c *CommandList) Request() string {
-	params := &scrcl.GetLinksParams{
-		TgChatId: c.traits.ChatID,
+func (c *List) Request() string {
+	params := &sclient.GetLinksParams{
+		TgChatId: c.Traits.ChatID,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resp, err := c.scrapperClient.GetLinks(ctx, params)
+	resp, err := c.Client.GetLinks(ctx, params)
 	if err != nil {
-		return failedList
+		return FailedList
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var respErr scrcl.ApiErrorResponse
-
-		if err := json.NewDecoder(resp.Body).Decode(&respErr); err != nil {
-			return failedList
-		}
-
-		if respErr.Description == nil {
-			return failedList
-		}
-
-		return *respErr.Description
+		return FailedList
 	}
 
-	var list scrcl.ListLinksResponse
+	var list sclient.ListLinksResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return failedList
+		return FailedList
 	}
 
-	sievedLinks := make([]models.Link, 0, *list.Size)
+	sievedLinks := make([]sclient.LinkResponse, 0, list.Size)
 
-	for _, link := range *list.Links {
-		if matchTags(*link.Tags, *c.link.Tags) &&
-			matchFilters(*link.Filters, *c.link.Filters) {
-			sievedLinks = append(sievedLinks, models.Link(link))
+	for _, Link := range list.Links {
+		if MatchTags(Link.Tags, c.Link.Tags) &&
+			MatchFilters(Link.Filters, c.Link.Filters) {
+			sievedLinks = append(sievedLinks, Link)
 		}
 	}
 
 	if len(sievedLinks) == 0 {
-		return emptyList
+		return EmptyList
 	}
 
-	return constructListMessage(sievedLinks)
+	return ConstructListMessage(sievedLinks)
 }
 
-func (c *CommandList) Name() string {
-	return c.traits.Name
+func (c *List) Name() string {
+	return c.Traits.Name
 }
 
 func createListStages() []*models.Stage {
 	return []*models.Stage{
-		models.NewStage(
-			TagsAck,
-			AcksManual,
-			validateAck,
-		),
-		models.NewStage(
-			TagsRequest,
-			TagsManual,
-			validateTags,
-		),
-		models.NewStage(
-			FiltersAck,
-			AcksManual,
-			validateAck,
-		),
-		models.NewStage(
-			FiltersRequest,
-			FiltersManual,
-			validateFilters,
-		),
+		models.NewStage(TagsAck, AcksManual, ValidateAck),
+		models.NewStage(TagsRequest, TagsManual, ValidateTags),
+		models.NewStage(FiltersAck, AcksManual, ValidateAck),
+		models.NewStage(FiltersRequest, FiltersManual, ValidateFilters),
 	}
 }
 
 const (
-	list       = "list"
-	listSpan   = 4
-	failedList = "💥 Failed to get the list of tracked links."
-	emptyList  = "⚡️ Currently, there are no links being tracked!"
+	CommandList = "list"
+	ListSpan    = 4
+	FailedList  = "💥 Failed to get the list of tracked Links."
+	EmptyList   = "⚡️ Currently, there are no Links being tracked!"
 )

@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"log/slog"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bootstrap"
-	scrapperservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
+	sinit "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/init"
+	ss "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 )
@@ -13,34 +12,53 @@ import (
 func main() {
 	app := fx.New(
 		fx.Provide(
-			bootstrap.LoadConfig,
-			bootstrap.InitPool,
-			bootstrap.InitRepository,
-			bootstrap.InitBotClient,
-			bootstrap.InitExternalClient,
-			bootstrap.InitTelegramAPI,
-			bootstrap.InitScheduler,
-			bootstrap.InitNotifier,
-			bootstrap.InitUpdater,
-			bootstrap.InitScrapperServer,
-			bootstrap.InitScrapperService,
+			sinit.Config,
+			sinit.DB,
+			sinit.ChatsRepository,
+			sinit.LinksRepository,
+			sinit.SubsRepository,
+			sinit.TagsRepository,
+			sinit.FiltersRepository,
+			sinit.Transactor,
+			sinit.Storage,
+			sinit.BotClient,
+			fx.Annotate(
+				sinit.StackClient,
+				fx.ResultTags(`name:"stack"`),
+			),
+			fx.Annotate(
+				sinit.GitHubClient,
+				fx.ResultTags(`name:"github"`),
+			),
+			sinit.Scheduler,
+			fx.Annotate(
+				sinit.Notifier,
+				fx.ParamTags(
+					"",
+					`name:"github"`,
+					`name:"stack"`,
+					"",
+					"",
+				),
+			),
+			fx.Annotate(
+				sinit.Updater,
+				fx.ParamTags(
+					"",
+					`name:"github"`,
+					`name:"stack"`,
+					"",
+				),
+			),
+			sinit.ScrapperServer,
+			sinit.ScrapperService,
 		),
 		fx.Invoke(func(
 			pool *pgxpool.Pool,
-			service *scrapperservice.ScrapperService,
+			service *ss.ScrapperService,
 		) error {
 			defer pool.Close()
-
-			if err := service.Run(context.Background()); err != nil {
-				slog.Error(
-					"scrapper service is down",
-					slog.String("msg", err.Error()),
-				)
-
-				return err
-			}
-
-			return nil
+			return service.Run(context.Background())
 		}),
 	)
 

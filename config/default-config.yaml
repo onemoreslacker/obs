@@ -1,0 +1,9 @@
+serving:
+    scrapperhost: scrapper
+    bothost: bot
+    scrapperport: 8080
+    botport: 8081
+database:
+    access: orm
+communication:
+    mode: async

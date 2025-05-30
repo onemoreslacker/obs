@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/telebot"
 )
@@ -25,7 +24,7 @@ func New(srv *http.Server, bt *telebot.Bot) (*BotService, error) {
 	}, nil
 }
 
-func (s *BotService) Run() error {
+func (s *BotService) Run(ctx context.Context) error {
 	srvErr := make(chan error)
 
 	go func() {
@@ -35,7 +34,7 @@ func (s *BotService) Run() error {
 	}()
 
 	go func() {
-		s.bt.Run()
+		s.bt.Run(ctx)
 	}()
 
 	stop := make(chan os.Signal, 1)
@@ -55,9 +54,6 @@ func (s *BotService) Run() error {
 			slog.String("service", "bot"),
 		)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
 
 	if err := s.srv.Shutdown(ctx); err != nil {
 		return err
