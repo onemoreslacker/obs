@@ -1,50 +1,51 @@
 package updater
 
 import (
+	"context"
 	"time"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/es-debug/backend-academy-2024-go-template/pkg"
 )
 
-func (upd *Updater) checkActivity(url string) (bool, error) {
+type Option func(cfg *updaterConfig)
+
+func WithCustomBatchSize(batchSize uint64) Option {
+	return func(cfg *updaterConfig) {
+		cfg.batchSize = batchSize
+	}
+}
+
+func WithCustomWorkersNumber(workersNum int) Option {
+	return func(cfg *updaterConfig) {
+		cfg.workersNum = workersNum
+	}
+}
+
+type updaterConfig struct {
+	batchSize  uint64
+	workersNum int
+}
+
+func (upd *Updater) CheckActivity(ctx context.Context, url string) (bool, error) {
 	var (
-		updated bool
+		updates []models.Update
 		err     error
 	)
 
 	service, err := pkg.ServiceFromURL(url)
 	if err != nil {
-		return updated, err
-	}
-
-	switch service {
-	case "github":
-		updated, err = upd.checkForUpdatesGithub(url)
-
-	case "stackoverflow":
-		updated, err = upd.checkForUpdatesStackOverflow(url)
-	}
-
-	return updated, err
-}
-
-func (upd *Updater) checkForUpdatesStackOverflow(link string) (bool, error) {
-	updates, err := upd.external.RetrieveStackOverflowUpdates(link)
-	if err != nil {
 		return false, err
 	}
 
-	if len(updates) == 0 {
-		return false, nil
+	switch service {
+	case config.GitHub:
+		updates, err = upd.GitHub.RetrieveUpdates(ctx, url)
+	case config.StackOverflow:
+		updates, err = upd.Stack.RetrieveUpdates(ctx, url)
 	}
 
-	createdAt := time.Unix(updates[0].CreatedAt, 0)
-
-	return createdAt.After(getCutoff()), nil
-}
-
-func (upd *Updater) checkForUpdatesGithub(link string) (bool, error) {
-	updates, err := upd.external.RetrieveGitHubUpdates(link)
 	if err != nil {
 		return false, err
 	}

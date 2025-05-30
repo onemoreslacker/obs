@@ -3,8 +3,11 @@ package commands
 import (
 	"bytes"
 	"fmt"
+	"net/url"
+	"slices"
+	"strings"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 )
 
 const (
@@ -20,12 +23,84 @@ const (
 	FiltersManual = "💥 Invalid format! Use 'filter:value' (e.g. 'user:dummy')."
 )
 
-func constructListMessage(links []models.Link) string {
+func ConstructListMessage(links []sclient.LinkResponse) string {
 	var buf bytes.Buffer
 
 	for i, link := range links {
-		fmt.Fprintf(&buf, "%d. %s\n", i+1, *link.Url)
+		fmt.Fprintf(&buf, "%d. %s\n", i+1, link.Url)
 	}
 
 	return buf.String()
+}
+
+func MatchTags(got, desired []string) bool {
+	if len(got) != len(desired) {
+		return false
+	}
+
+	for _, tag := range desired {
+		if !slices.Contains(got, tag) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func MatchFilters(got, desired []string) bool {
+	if len(got) != len(desired) {
+		return false
+	}
+
+	for _, filter := range desired {
+		if !slices.Contains(got, filter) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func ValidateLink(link string) error {
+	_, err := url.Parse(link)
+	if err != nil {
+		return ErrInvalidLinkFormat
+	}
+
+	if !((strings.Contains(link, "stackoverflow") && strings.Contains(link, "questions")) ||
+		strings.Contains(link, "github")) {
+		return ErrInvalidLinkFormat
+	}
+
+	return nil
+}
+
+func ValidateAck(input string) error {
+	if !slices.Contains([]string{"yes", "no"},
+		strings.ToLower(strings.TrimSpace(input))) {
+		return ErrInvalidAck
+	}
+
+	return nil
+}
+
+func ValidateTags(input string) error {
+	if !(input == "" || len(strings.Fields(input)) > 0) {
+		return ErrInvalidTagsFormat
+	}
+
+	return nil
+}
+
+func ValidateFilters(input string) error {
+	filters := strings.Fields(input)
+
+	for _, filter := range filters {
+		pair := strings.Split(filter, ":")
+		if len(pair) != 2 {
+			return ErrInvalidFiltersFormat
+		}
+	}
+
+	return nil
 }

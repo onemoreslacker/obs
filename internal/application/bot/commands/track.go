@@ -3,74 +3,73 @@ package commands
 import (
 	"context"
 	"net/http"
+	"time"
 
+	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
-	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 )
 
-type CommandTrack struct {
-	traits *models.Traits
-
-	pipeline []*models.Stage
-	link     models.Link
-
-	scrapperClient scrcl.ClientInterface
+type Poster interface {
+	PostLinks(ctx context.Context, params *sclient.PostLinksParams, body sclient.PostLinksJSONRequestBody,
+		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
 }
 
-func NewCommandTrack(
-	chatID int64,
-	client scrcl.ClientInterface,
-) *CommandTrack {
-	return &CommandTrack{
-		traits: models.NewTraits(
-			TrackSpan,
-			chatID,
-			Track,
-		),
-		pipeline:       createTrackStages(),
-		link:           models.Link{Id: &chatID},
-		scrapperClient: client,
+type Track struct {
+	Traits   *models.Traits
+	Pipeline []*models.Stage
+	Link     sclient.AddLinkRequest
+	Client   Poster
+}
+
+func NewTrack(chatID int64, client Poster) *Track {
+	return &Track{
+		Traits:   models.NewTraits(TrackSpan, chatID, CommandTrack),
+		Pipeline: createTrackStages(),
+		Link:     sclient.AddLinkRequest{},
+		Client:   client,
 	}
 }
 
-func (c *CommandTrack) Validate(input string) error {
-	if err := c.pipeline[c.traits.Stage].Validate(input); err != nil {
-		c.traits.Malformed = true
+func (c *Track) Validate(input string) error {
+	if err := c.Pipeline[c.Traits.Stage].Validate(input); err != nil {
+		c.Traits.Malformed = true
 		return err
 	}
 
-	c.traits.HandleTrack(input, &c.link)
+	c.Traits.HandleTrack(input, &c.Link)
 
 	return nil
 }
 
-func (c *CommandTrack) Stage() (string, bool) {
-	keyboard := c.traits.Stage == 1 || c.traits.Stage == 3
+func (c *Track) Stage() (string, bool) {
+	keyboard := c.Traits.Stage == 1 || c.Traits.Stage == 3
 
-	if !c.traits.Malformed {
-		return c.pipeline[c.traits.Stage].Prompt, keyboard
+	if !c.Traits.Malformed {
+		return c.Pipeline[c.Traits.Stage].Prompt, keyboard
 	}
 
-	return c.pipeline[c.traits.Stage].Manual, keyboard
+	return c.Pipeline[c.Traits.Stage].Manual, keyboard
 }
 
-func (c *CommandTrack) Done() bool {
-	return c.traits.Stage == c.traits.Span
+func (c *Track) Done() bool {
+	return c.Traits.Stage == c.Traits.Span
 }
 
-func (c *CommandTrack) Request() string {
-	params := &scrcl.PostLinksParams{
-		TgChatId: c.traits.ChatID,
+func (c *Track) Request() string {
+	params := &sclient.PostLinksParams{
+		TgChatId: c.Traits.ChatID,
 	}
 
-	body := scrcl.PostLinksJSONRequestBody{
-		Link:    c.link.Url,
-		Tags:    c.link.Tags,
-		Filters: c.link.Filters,
+	body := sclient.AddLinkRequest{
+		Link:    c.Link.Link,
+		Tags:    c.Link.Tags,
+		Filters: c.Link.Filters,
 	}
 
-	resp, err := c.scrapperClient.PostLinks(
-		context.Background(), params, body)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := c.Client.PostLinks(ctx, params, body)
 	if err != nil {
 		return FailedTrack
 	}
@@ -87,45 +86,25 @@ func (c *CommandTrack) Request() string {
 	return SuccessfulTrack
 }
 
-func (c *CommandTrack) Name() string {
-	return c.traits.Name
+func (c *Track) Name() string {
+	return c.Traits.Name
 }
 
 func createTrackStages() []*models.Stage {
 	return []*models.Stage{
-		models.NewStage(
-			TrackRequest,
-			LinkManual,
-			ValidateLink,
-		),
-		models.NewStage(
-			TagsAck,
-			TagsManual,
-			validateAck,
-		),
-		models.NewStage(
-			TagsRequest,
-			TagsManual,
-			validateTags,
-		),
-		models.NewStage(
-			FiltersAck,
-			AcksManual,
-			validateAck,
-		),
-		models.NewStage(
-			FiltersRequest,
-			FiltersManual,
-			validateFilters,
-		),
+		models.NewStage(TrackRequest, LinkManual, ValidateLink),
+		models.NewStage(TagsAck, TagsManual, ValidateAck),
+		models.NewStage(TagsRequest, TagsManual, ValidateTags),
+		models.NewStage(FiltersAck, AcksManual, ValidateAck),
+		models.NewStage(FiltersRequest, FiltersManual, ValidateFilters),
 	}
 }
 
 const (
-	Track              = "track"
+	CommandTrack       = "track"
 	TrackSpan          = 5
-	TrackRequest       = "✨ Please, enter the link you want to track! (press /cancel to quit)"
-	FailedTrack        = "💥 Failed to track link!"
-	LinkAlreadyTracked = "⚡️ This link is already being tracked!"
-	SuccessfulTrack    = "✨ This link is now being tracked!"
+	TrackRequest       = "✨ Please, enter the Link you want to track! (press /cancel to quit)"
+	FailedTrack        = "💥 Failed to track Link!"
+	LinkAlreadyTracked = "⚡️ This Link is already being tracked!"
+	SuccessfulTrack    = "✨ This Link is now being tracked!"
 )

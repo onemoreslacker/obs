@@ -2,79 +2,69 @@ package commands
 
 import (
 	"context"
-	"log"
 	"net/http"
+	"time"
 
+	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
-	scrcl "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients/scrapper"
 )
 
-type CommandUntrack struct {
-	traits *models.Traits
-
-	pipeline []*models.Stage
-	link     models.Link
-
-	scrapperClient scrcl.ClientInterface
+type Deleter interface {
+	DeleteLinks(ctx context.Context, params *sclient.DeleteLinksParams, body sclient.DeleteLinksJSONRequestBody,
+		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
 }
 
-func NewCommandUntrack(
-	chatID int64,
-	client scrcl.ClientInterface,
-) *CommandUntrack {
-	return &CommandUntrack{
-		traits: models.NewTraits(
-			UntrackSpan,
-			chatID,
-			Untrack,
-		),
-		pipeline:       createUntrackStages(),
-		scrapperClient: client,
+type Untrack struct {
+	Traits   *models.Traits
+	Pipeline []*models.Stage
+	Link     sclient.RemoveLinkRequest
+	Client   Deleter
+}
+
+func NewUntrack(chatID int64, client Deleter) *Untrack {
+	return &Untrack{
+		Traits:   models.NewTraits(UntrackSpan, chatID, CommandUntrack),
+		Pipeline: createUntrackStages(),
+		Client:   client,
 	}
 }
 
-func (c *CommandUntrack) Validate(input string) error {
-	if err := c.pipeline[c.traits.Stage].Validate(input); err != nil {
-		c.traits.Malformed = true
+func (c *Untrack) Validate(input string) error {
+	if err := c.Pipeline[c.Traits.Stage].Validate(input); err != nil {
+		c.Traits.Malformed = true
 		return err
 	}
 
-	c.traits.HandleUntrack(input, &c.link)
+	c.Traits.HandleUntrack(input, &c.Link)
 
 	return nil
 }
 
-func (c *CommandUntrack) Stage() (string, bool) {
-	keyboard := false
-
-	if !c.traits.Malformed {
-		return c.pipeline[c.traits.Stage].Prompt, keyboard
+func (c *Untrack) Stage() (string, bool) {
+	if !c.Traits.Malformed {
+		return c.Pipeline[c.Traits.Stage].Prompt, false
 	}
 
-	return c.pipeline[c.traits.Stage].Manual, keyboard
+	return c.Pipeline[c.Traits.Stage].Manual, false
 }
 
-func (c *CommandUntrack) Done() bool {
-	return c.traits.Stage == c.traits.Span
+func (c *Untrack) Done() bool {
+	return c.Traits.Stage == c.Traits.Span
 }
 
-func (c *CommandUntrack) Request() string {
-	params := &scrcl.DeleteLinksParams{
-		TgChatId: c.traits.ChatID,
-	}
+func (c *Untrack) Request() string {
+	params := &sclient.DeleteLinksParams{TgChatId: c.Traits.ChatID}
 
-	body := scrcl.DeleteLinksJSONRequestBody{
-		Link: c.link.Url,
-	}
+	body := sclient.RemoveLinkRequest{Link: c.Link.Link}
 
-	resp, err := c.scrapperClient.DeleteLinks(
-		context.Background(), params, body)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := c.Client.DeleteLinks(ctx, params, body)
 	if err != nil {
 		return FailedUntrack
 	}
 	defer resp.Body.Close()
-
-	log.Println(resp.StatusCode)
 
 	if resp.StatusCode == http.StatusBadRequest {
 		return FailedUntrack
@@ -87,22 +77,18 @@ func (c *CommandUntrack) Request() string {
 	return SuccessfulUntrack
 }
 
-func (c *CommandUntrack) Name() string {
-	return c.traits.Name
+func (c *Untrack) Name() string {
+	return c.Traits.Name
 }
 
 func createUntrackStages() []*models.Stage {
 	return []*models.Stage{
-		models.NewStage(
-			UntrackRequest,
-			LinkManual,
-			ValidateLink,
-		),
+		models.NewStage(UntrackRequest, LinkManual, ValidateLink),
 	}
 }
 
 const (
-	Untrack           = "untrack"
+	CommandUntrack    = "untrack"
 	UntrackSpan       = 1
 	UntrackRequest    = "✨ Please, enter the link you want to untrack! (press /cancel to quit)"
 	FailedUntrack     = "💥 Failed to untrack provided link."
