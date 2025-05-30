@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -12,7 +12,7 @@ FROM alpine:latest AS runtime
 
 WORKDIR /app
 COPY --from=builder /app/bin/bot ./
-COPY --from=builder /app/config/config.yaml ./config/
+# COPY --from=builder /app/config/config.yaml ./config/
 
 EXPOSE 8081
 
