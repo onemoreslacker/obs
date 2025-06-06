@@ -5,20 +5,23 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"runtime"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/spf13/viper"
 )
 
 const (
-	Scheme        = "http"
-	SchemeSecure  = "https"
-	GitHub        = "github"
-	StackOverflow = "stackoverflow"
-	Sync          = "sync"
-	Async         = "async"
-	Orm           = "orm"
-	Sql           = "sql"
+	Scheme          = "http"
+	SchemeSecure    = "https"
+	GitHub          = "github"
+	StackOverflow   = "stackoverflow"
+	Orm             = "orm"
+	Sql             = "sql"
+	Sync            = "sync"
+	Async           = "async"
+	ShutdownTimeout = 5 * time.Second
 )
 
 type (
@@ -38,22 +41,48 @@ type (
 		Access   string `yaml:"access" envDefault:"orm"`
 	}
 
+	Brokers []struct {
+		Host string `yaml:"host"`
+		Port string `yaml:"port"`
+	}
+
+	Cache struct {
+		Host string `yaml:"host"`
+		Port string `yaml:"port"`
+	}
+
 	Secrets struct {
 		GitHubToken        string `env:"GITHUB_TOKEN"`
 		StackOverflowToken string `env:"STACKOVERFLOW_TOKEN"`
 		BotToken           string `env:"BOT_TOKEN"`
 	}
 
-	Communication struct {
-		Mode string `yaml:"mode" envDefault:"sync"`
+	Notifier struct {
+		NumWorkers int `yaml:"numworkers" envDefault:"16"`
+	}
+
+	Updater struct {
+		BatchSize  uint64 `yaml:"batchsize" envDefault:"200"`
+		NumWorkers int    `yaml:"numworkers" envDefault:"16"`
+	}
+
+	Transport struct {
+		Mode            string `yaml:"mode" envDefault:"async"`
+		Topic           string `yaml:"topic" envDefault:"link.updates"`
+		DLQTopic        string `yaml:"dlqtopic" envDefault:"link.updates.dlq"`
+		ConsumerGroupID string `yaml:"groupid" envDefault:"link.updates.1"`
 	}
 )
 
 type Config struct {
-	Serving       Serving       `yaml:"serving"`
-	Database      Database      `yaml:"database"`
-	Communication Communication `yaml:"communication"`
-	Secrets       Secrets
+	Serving   Serving   `yaml:"serving"`
+	Database  Database  `yaml:"database"`
+	Brokers   Brokers   `yaml:"brokers"`
+	Cache     Cache     `yaml:"cache"`
+	Transport Transport `yaml:"transport"`
+	Updater   Updater   `yaml:"updater"`
+	Notifier  Notifier  `yaml:"notifier"`
+	Secrets   Secrets
 }
 
 func New(name string) (*Config, error) {
@@ -65,6 +94,9 @@ func New(name string) (*Config, error) {
 	if err := NewConfigFromEnv(cfg); err != nil {
 		return nil, err
 	}
+
+	cfg.Updater.NumWorkers = runtime.GOMAXPROCS(0)
+	cfg.Notifier.NumWorkers = runtime.GOMAXPROCS(0)
 
 	return cfg, nil
 }
@@ -136,7 +168,7 @@ var Descriptions = []struct {
 	},
 	{
 		Name:        "/untrack",
-		Description: "untracks the link",
+		Description: "starts the process of deleting the link",
 	},
 	{
 		Name:        "/list",
