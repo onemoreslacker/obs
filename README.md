@@ -1,5 +1,7 @@
 # 📡 Observer
 
+<img src="assets/obs.logo.png" width="100" style="float: right; margin-left: 10px;">
+
 <!-- TOC -->
 - [Installation](#installation)
 - [Configuration](#configuration)
