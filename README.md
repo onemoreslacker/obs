@@ -33,5 +33,5 @@ That's it! Your bot should now be up and running.
 
 ## Configuration
 
-Edit `docker/.env` file with your actual GitHub, StackOverflow and Telegram
+Edit `deploy/.env` file with your actual GitHub, StackOverflow and Telegram tokens
 as well as Postgres environment variables.
