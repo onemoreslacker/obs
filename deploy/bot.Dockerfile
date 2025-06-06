@@ -12,7 +12,7 @@ FROM alpine:latest AS runtime
 
 WORKDIR /app
 COPY --from=builder /app/bin/bot ./
-# COPY --from=builder /app/config/config.yaml ./config/
+COPY --from=builder /app/config/default-config.yaml ./config/
 
 EXPOSE 8081
 

@@ -5,5 +5,21 @@ serving:
     botport: 8081
 database:
     access: orm
-communication:
+brokers:
+    - host: kafka1
+      port: 19092
+    - host: kafka2
+      port: 19093
+cache:
+    host: redis
+    port: 6379
+transport:
     mode: async
+    topic: link.updates
+    topicdlq: link.updates.dlq
+    groupid: link.updates.1
+notifier:
+    numworkers: 16
+updater:
+    batchsize: 200
+    numworkers: 16

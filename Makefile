@@ -92,12 +92,12 @@ clean:
 
 .PHONY: up
 up:
-	@docker compose -f docker/docker-compose.yaml up --build 
+	@docker compose -f deploy/docker-compose.yaml up --build
 
 .PHONY: up-silent
 up-silent:
-	@docker compose -f docker/docker-compose.yaml up --build -d 
+	@docker compose -f deploy/docker-compose.yaml up --build -d
 
 .PHONY: down
 down: 
-	@docker compose -f docker/docker-compose.yaml down -v
+	@docker compose -f deploy/docker-compose.yaml down -v
