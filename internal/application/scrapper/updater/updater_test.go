@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
 	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
-	mocks "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/mocks"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/updater"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -22,9 +23,7 @@ func TestProcessLink(t *testing.T) {
 
 	ctx := context.Background()
 
-	links := []sapi.LinkResponse{
-		{Id: 1, Url: "https://github.com/example/repo"},
-	}
+	link := sapi.LinkResponse{Id: 1, Url: "https://github.com/example/repo"}
 
 	storage.On("TouchLink", mock.Anything, int64(1)).Return(nil)
 	storage.On("UpdateLinkActivity", mock.Anything, int64(1), true).Return(nil)
@@ -35,9 +34,13 @@ func TestProcessLink(t *testing.T) {
 	upd := &updater.Updater{
 		Storage: storage,
 		GitHub:  client,
+		Cfg: &config.Updater{
+			BatchSize:  200,
+			NumWorkers: 16,
+		},
 	}
 
-	upd.ProcessLink(ctx, links)
+	require.NoError(t, upd.ProcessLink(ctx, link))
 }
 
 func TestCheckActivity(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/commands"
-	mocks "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/mocks"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/telebot"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/mocks"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/stretchr/testify/require"
@@ -57,12 +57,15 @@ func TestInitializeCommand(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			api := mocks.NewMockTgAPI(t)
-			client := mocks.NewMockScrapperClient(t)
+			defer api.AssertExpectations(t)
 
-			b := &telebot.Bot{
-				Client: client,
-				Tgb:    api,
-			}
+			client := mocks.NewMockScrapperClient(t)
+			defer client.AssertExpectations(t)
+
+			cache := mocks.NewMockCache(t)
+			defer client.AssertExpectations(t)
+
+			b := telebot.New(client, api, cache)
 
 			actualReply := b.InitializeCommand(test.msg)
 			require.Equal(t, test.expectedReply, actualReply.Text)

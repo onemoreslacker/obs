@@ -2,15 +2,17 @@ package commands_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
 
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/commands"
-	mocks "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/mocks"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -21,82 +23,167 @@ func TestListRequest(t *testing.T) {
 	tests := map[string]struct {
 		tags        []string
 		filters     []string
-		response    sclient.ListLinksResponse
-		statusCode  int
+		setupMocks  func(client *mocks.MockScrapperClient, cache *mocks.MockCache)
 		expectedMsg string
+		wantErr     bool
 	}{
-		"successful track": {
+		"successful list (cache hit)": {
 			tags:    []string{},
 			filters: []string{},
-			response: sclient.ListLinksResponse{
-				Links: []sclient.LinkResponse{
-					{
-						Id:      1,
-						Url:     "https://github.com/example/repo",
-						Tags:    []string{},
-						Filters: []string{},
+			setupMocks: func(_ *mocks.MockScrapperClient, cache *mocks.MockCache) {
+				response := sclient.ListLinksResponse{
+					Links: []sclient.LinkResponse{
+						{
+							Id:      1,
+							Url:     "https://github.com/example/repo",
+							Tags:    []string{},
+							Filters: []string{},
+						},
 					},
-				},
-				Size: 1,
+					Size: 1,
+				}
+
+				cache.On("Get", mock.Anything, chatID).
+					Once().Return(response, nil)
 			},
-			statusCode:  http.StatusOK,
 			expectedMsg: "1. https://github.com/example/repo\n",
+			wantErr:     false,
 		},
-		"failed list (bad request)": {
-			tags:        []string{},
-			filters:     []string{},
-			statusCode:  http.StatusBadRequest,
-			expectedMsg: commands.FailedList,
-		},
-		"empty list": {
+		"failed list (cache miss and client fail)": {
 			tags:    []string{},
 			filters: []string{},
-			response: sclient.ListLinksResponse{
-				Links: []sclient.LinkResponse{},
-				Size:  0,
+			setupMocks: func(client *mocks.MockScrapperClient, cache *mocks.MockCache) {
+				params := &sclient.GetLinksParams{TgChatId: chatID}
+
+				client.On("GetLinks", mock.Anything, params).
+					Once().Return(&http.Response{
+					StatusCode: http.StatusBadRequest,
+					Body:       io.NopCloser(nil),
+				}, errors.New("failed to get links"))
+
+				cache.On("Get", mock.Anything, chatID).
+					Once().Return(sclient.ListLinksResponse{}, commands.ErrLinkNotExists)
 			},
-			statusCode:  http.StatusOK,
-			expectedMsg: commands.EmptyList,
+			expectedMsg: commands.FailedList,
+			wantErr:     true,
 		},
-		"successful list with sieved links": {
+		"empty list (cache hit)": {
+			tags:    []string{},
+			filters: []string{},
+			setupMocks: func(_ *mocks.MockScrapperClient, cache *mocks.MockCache) {
+				response := sclient.ListLinksResponse{
+					Links: []sclient.LinkResponse{},
+					Size:  0,
+				}
+
+				cache.On("Get", mock.Anything, chatID).
+					Once().Return(response, nil)
+			},
+			expectedMsg: commands.EmptyList,
+			wantErr:     false,
+		},
+		"empty list (cache miss)": {
+			tags:    []string{},
+			filters: []string{},
+			setupMocks: func(client *mocks.MockScrapperClient, cache *mocks.MockCache) {
+				params := &sclient.GetLinksParams{TgChatId: chatID}
+				response := sclient.ListLinksResponse{
+					Links: []sclient.LinkResponse{},
+					Size:  0,
+				}
+
+				buf := &bytes.Buffer{}
+				require.NoError(t, json.NewEncoder(buf).Encode(response))
+				client.On("GetLinks", mock.Anything, params).
+					Once().Return(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(buf),
+				}, nil)
+
+				cache.On("Get", mock.Anything, chatID).
+					Once().Return(sclient.ListLinksResponse{}, commands.ErrLinkNotExists)
+			},
+			expectedMsg: commands.EmptyList,
+			wantErr:     false,
+		},
+		"successful list with sieved links (cache hit)": {
 			tags:    []string{"go"},
 			filters: []string{"example"},
-			response: sclient.ListLinksResponse{
-				Links: []sclient.LinkResponse{
-					{
-						Id:      1,
-						Url:     "https://github.com/example/repo",
-						Tags:    []string{"go"},
-						Filters: []string{"example"},
+			setupMocks: func(_ *mocks.MockScrapperClient, cache *mocks.MockCache) {
+				response := sclient.ListLinksResponse{
+					Links: []sclient.LinkResponse{
+						{
+							Id:      1,
+							Url:     "https://github.com/example/repo",
+							Tags:    []string{"go"},
+							Filters: []string{"example"},
+						},
+						{
+							Id:      2,
+							Url:     "https://gitlab.com/other/repo",
+							Tags:    []string{"rust"},
+							Filters: []string{"other"},
+						},
 					},
-					{
-						Id:      2,
-						Url:     "https://gitlab.com/other/repo",
-						Tags:    []string{"rust"},
-						Filters: []string{"other"},
-					},
-				},
-				Size: 2,
+					Size: 2,
+				}
+
+				cache.On("Get", mock.Anything, chatID).
+					Once().Return(response, nil)
 			},
-			statusCode:  http.StatusOK,
 			expectedMsg: "1. https://github.com/example/repo\n",
+			wantErr:     false,
+		},
+		"successful list with sieved links (cache miss)": {
+			tags:    []string{"go"},
+			filters: []string{"example"},
+			setupMocks: func(client *mocks.MockScrapperClient, cache *mocks.MockCache) {
+				params := &sclient.GetLinksParams{TgChatId: chatID}
+				response := sclient.ListLinksResponse{
+					Links: []sclient.LinkResponse{
+						{
+							Id:      1,
+							Url:     "https://github.com/example/repo",
+							Tags:    []string{"go"},
+							Filters: []string{"example"},
+						},
+						{
+							Id:      2,
+							Url:     "https://gitlab.com/other/repo",
+							Tags:    []string{"rust"},
+							Filters: []string{"other"},
+						},
+					},
+					Size: 2,
+				}
+
+				buf := &bytes.Buffer{}
+				require.NoError(t, json.NewEncoder(buf).Encode(response))
+				client.On("GetLinks", mock.Anything, params).
+					Once().Return(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(buf),
+				}, nil)
+
+				cache.On("Get", mock.Anything, chatID).
+					Once().Return(response, commands.ErrLinkNotExists)
+			},
+			expectedMsg: "1. https://github.com/example/repo\n",
+			wantErr:     false,
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
 			client := mocks.NewMockScrapperClient(t)
 			defer client.AssertExpectations(t)
 
-			params := &sclient.GetLinksParams{TgChatId: chatID}
-			body := &bytes.Buffer{}
-			require.NoError(t, json.NewEncoder(body).Encode(test.response))
+			cache := mocks.NewMockCache(t)
+			defer cache.AssertExpectations(t)
 
-			client.On("GetLinks", mock.Anything, params).
-				Return(&http.Response{
-					StatusCode: test.statusCode,
-					Body:       io.NopCloser(body),
-				}, nil)
+			test.setupMocks(client, cache)
 
 			cmd := &commands.List{
 				Traits: models.NewTraits(commands.ListSpan, chatID, commands.CommandList),
@@ -105,9 +192,15 @@ func TestListRequest(t *testing.T) {
 					Tags:    test.tags,
 					Filters: test.filters,
 				},
+				Cache: cache,
 			}
 
-			actualMsg := cmd.Request()
+			actualMsg, err := cmd.Request(ctx)
+			if test.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 
 			require.Equal(t, test.expectedMsg, actualMsg)
 		})

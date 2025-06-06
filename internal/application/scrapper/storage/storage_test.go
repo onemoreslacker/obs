@@ -42,11 +42,15 @@ func TestMain(m *testing.M) {
 				WithOccurrence(2).
 				WithStartupTimeout(5*time.Second)),
 	)
+	defer func() {
+		if err = testcontainers.TerminateContainer(container); err != nil {
+			log.Printf("failed to terminate container: %s", err)
+		}
+	}()
+
 	if err != nil {
 		log.Fatalf("failed to start container: %s", err)
 	}
-
-	defer testcontainers.TerminateContainer(container)
 
 	host, err := container.Host(ctx)
 	if err != nil {
@@ -156,6 +160,11 @@ func TestAddAndGetLinks(t *testing.T) {
 				chatIDs, err := st.GetChatIDs(ctx)
 				require.NoError(t, err)
 				require.ElementsMatch(t, []int64{1, 2}, chatIDs)
+			})
+
+			t.Run("repeated link", func(t *testing.T) {
+				_, err := st.AddLink(ctx, testLinks[0].link, testLinks[0].chatID)
+				require.Error(t, err)
 			})
 		})
 	}

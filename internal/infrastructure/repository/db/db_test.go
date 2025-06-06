@@ -37,11 +37,15 @@ func TestMain(m *testing.M) {
 				WithOccurrence(2).
 				WithStartupTimeout(5*time.Second)),
 	)
+	defer func() {
+		if err = testcontainers.TerminateContainer(container); err != nil {
+			log.Printf("failed to terminate container: %s", err)
+		}
+	}()
+
 	if err != nil {
 		log.Fatalf("failed to start container: %s", err)
 	}
-
-	defer testcontainers.TerminateContainer(container)
 
 	host, err := container.Host(ctx)
 	if err != nil {
