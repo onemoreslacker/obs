@@ -3,61 +3,64 @@ package botservice
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"net/http"
-	"os"
+	"fmt"
 	"os/signal"
 	"syscall"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/telebot"
+	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"golang.org/x/sync/errgroup"
 )
 
-type BotService struct {
-	srv *http.Server
-	bt  *telebot.Bot
+type UpdateReceiver interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 }
 
-func New(srv *http.Server, bt *telebot.Bot) (*BotService, error) {
+type Runnable interface {
+	Run(ctx context.Context) error
+}
+
+type BotService struct {
+	receiver UpdateReceiver
+	bot      Runnable
+}
+
+func New(receiver UpdateReceiver, bot Runnable) *BotService {
 	return &BotService{
-		srv: srv,
-		bt:  bt,
-	}, nil
+		receiver: receiver,
+		bot:      bot,
+	}
 }
 
 func (s *BotService) Run(ctx context.Context) error {
-	srvErr := make(chan error)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	go func() {
-		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			srvErr <- err
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		if err := s.receiver.Start(ctx); err != nil {
+			return fmt.Errorf("update receiver error: %w", err)
 		}
-	}()
+		return nil
+	})
 
-	go func() {
-		s.bt.Run(ctx)
-	}()
+	g.Go(func() error {
+		if err := s.bot.Run(ctx); err != nil {
+			return fmt.Errorf("telebot error: %w", err)
+		}
+		return nil
+	})
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	runErr := g.Wait()
 
-	select {
-	case err := <-srvErr:
-		slog.Error(
-			"server error",
-			slog.String("error", err.Error()),
-			slog.String("service", "bot"),
-		)
-	case sig := <-stop:
-		slog.Info(
-			"received shutdown signal",
-			slog.String("signal", sig.String()),
-			slog.String("service", "bot"),
-		)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+	defer cancel()
+
+	errs := []error{runErr}
+	if err := s.receiver.Stop(shutdownCtx); err != nil {
+		errs = append(errs, fmt.Errorf("failed to stop update receiver: %w", err))
 	}
 
-	if err := s.srv.Shutdown(ctx); err != nil {
-		return err
-	}
-
-	return nil
+	return errors.Join(errs...)
 }

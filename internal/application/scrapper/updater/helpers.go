@@ -9,7 +9,7 @@ import (
 	"github.com/es-debug/backend-academy-2024-go-template/pkg"
 )
 
-type Option func(cfg *updaterConfig)
+type Option func(*updaterConfig)
 
 func WithCustomBatchSize(batchSize uint64) Option {
 	return func(cfg *updaterConfig) {

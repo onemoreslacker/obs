@@ -3,6 +3,7 @@ package scrapperinit
 import (
 	"flag"
 	"fmt"
+	"hash/adler32"
 	"net"
 	"net/http"
 	"net/url"
@@ -10,12 +11,13 @@ import (
 	"github.com/es-debug/backend-academy-2024-go-template/config"
 	botclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/bot"
 	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
-	scrapperserver "github.com/es-debug/backend-academy-2024-go-template/internal/api/servers/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/notifier"
-	scrapperservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
+	ss "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/storage"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/updater"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/clients"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/producers"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/chats"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/db"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/filters"
@@ -23,8 +25,11 @@ import (
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/subs"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/tags"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/txs"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/sender"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/scrapper"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/segmentio/kafka-go"
 )
 
 func Config() (*config.Config, error) {
@@ -115,14 +120,19 @@ func Scheduler() (gocron.Scheduler, error) {
 	return scheduler, nil
 }
 
+func Serializer() *models.Serializer {
+	return models.NewSerializer()
+}
+
 func Notifier(
 	storage *storage.Storage,
 	github clients.Client,
 	stack clients.Client,
-	bc botclient.ClientInterface,
+	sender *producers.UpdateSender,
 	sch gocron.Scheduler,
+	cfg *config.Config,
 ) *notifier.Notifier {
-	return notifier.New(storage, github, stack, bc, sch)
+	return notifier.New(storage, github, stack, sender, sch, &cfg.Notifier)
 }
 
 func Updater(
@@ -130,19 +140,55 @@ func Updater(
 	github clients.Client,
 	stack clients.Client,
 	sch gocron.Scheduler,
+	cfg *config.Config,
 ) *updater.Updater {
-	return updater.New(storage, github, stack, sch)
+	return updater.New(storage, github, stack, sch, &cfg.Updater)
 }
 
-func ScrapperService(
-	u *updater.Updater,
-	nt *notifier.Notifier,
-	srv *http.Server,
-) *scrapperservice.ScrapperService {
-	return scrapperservice.New(u, nt, srv)
+func KafkaWriter(cfg *config.Config) *kafka.Writer {
+	addresses := make([]string, 0, len(cfg.Brokers))
+	for _, broker := range cfg.Brokers {
+		addresses = append(addresses, net.JoinHostPort(broker.Host, broker.Port))
+	}
+
+	return &kafka.Writer{
+		Addr:                   kafka.TCP(addresses...),
+		Topic:                  cfg.Transport.Topic,
+		Balancer:               &kafka.Hash{Hasher: adler32.New()},
+		Transport:              kafka.DefaultTransport,
+		AllowAutoTopicCreation: true,
+	}
+}
+
+func AsyncSender(writer *kafka.Writer, serializer *models.Serializer) *producers.UpdateSender {
+	return producers.NewUpdateSender(writer, serializer)
+}
+
+func UpdateSender(
+	client botclient.ClientInterface,
+	asyncSender *producers.UpdateSender,
+	cfg *config.Config,
+) (sender.UpdateSender, error) {
+	syncSender := sender.NewSyncUpdateSender(client)
+
+	snd, err := sender.New(syncSender, asyncSender, &cfg.Transport)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize update receiver: %w", err)
+	}
+
+	return snd, nil
 }
 
 func ScrapperServer(cfg *config.Config, storage *storage.Storage) *http.Server {
 	api := sapi.New(storage)
 	return scrapperserver.New(cfg.Serving, api)
+}
+
+func ScrapperService(
+	upd *updater.Updater,
+	nt *notifier.Notifier,
+	sender *producers.UpdateSender,
+	srv *http.Server,
+) *ss.ScrapperService {
+	return ss.New(upd, nt, sender, srv)
 }

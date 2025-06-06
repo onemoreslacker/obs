@@ -32,7 +32,8 @@ func ConstructHelpMessage() string {
 }
 
 func (b *Bot) ConfigureReply(msg *tgbotapi.Message) tgbotapi.MessageConfig {
-	content, keyboard := b.CurrentCommand.Stage()
+	currentCommand, _ := b.CommandStates.Load(msg.Chat.ID)
+	content, keyboard := currentCommand.Stage()
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, content)
 	if keyboard {
@@ -68,11 +69,11 @@ func (b *Bot) InitializeCommand(msg *tgbotapi.Message) tgbotapi.MessageConfig {
 
 	switch msg.Command() {
 	case Track:
-		b.CurrentCommand = commands.NewTrack(msg.Chat.ID, b.Client)
+		b.CommandStates.Store(msg.Chat.ID, commands.NewTrack(msg.Chat.ID, b.Client, b.Cache))
 	case Untrack:
-		b.CurrentCommand = commands.NewUntrack(msg.Chat.ID, b.Client)
+		b.CommandStates.Store(msg.Chat.ID, commands.NewUntrack(msg.Chat.ID, b.Client, b.Cache))
 	case List:
-		b.CurrentCommand = commands.NewList(msg.Chat.ID, b.Client)
+		b.CommandStates.Store(msg.Chat.ID, commands.NewList(msg.Chat.ID, b.Client, b.Cache))
 	default:
 		return tgbotapi.NewMessage(msg.Chat.ID, UnknownCommand)
 	}

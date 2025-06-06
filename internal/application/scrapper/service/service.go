@@ -3,76 +3,89 @@ package scrapperservice
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/notifier"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/updater"
+	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"golang.org/x/sync/errgroup"
 )
 
-type ScrapperService struct {
-	upd *updater.Updater
-	nt  *notifier.Notifier
-	srv *http.Server
+type Runnable interface {
+	Run(ctx context.Context) error
 }
 
-func New(upd *updater.Updater, nt *notifier.Notifier, srv *http.Server) *ScrapperService {
+type Server interface {
+	ListenAndServe() error
+	Shutdown(ctx context.Context) error
+}
+
+type UpdateSender interface {
+	Send(ctx context.Context, chatID int64, url, description string) error
+	Stop() error
+}
+
+type ScrapperService struct {
+	updater  Runnable
+	notifier Runnable
+	sender   UpdateSender
+	srv      Server
+}
+
+func New(
+	updater, notifier Runnable,
+	sender UpdateSender,
+	srv Server,
+) *ScrapperService {
 	return &ScrapperService{
-		upd: upd,
-		nt:  nt,
-		srv: srv,
+		updater:  updater,
+		notifier: notifier,
+		sender:   sender,
+		srv:      srv,
 	}
 }
 
 func (s *ScrapperService) Run(ctx context.Context) error {
-	srvErr := make(chan error, 1)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	go func() {
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		if err := s.updater.Run(ctx); err != nil {
+			return fmt.Errorf("updater error: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := s.notifier.Run(ctx); err != nil {
+			return fmt.Errorf("notifier error: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
 		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			srvErr <- err
+			return fmt.Errorf("server error: %w", err)
 		}
-	}()
+		return nil
+	})
 
-	notifierErr := make(chan error, 1)
+	runErr := g.Wait()
 
-	go func() {
-		if err := s.nt.Run(ctx); err != nil {
-			notifierErr <- err
-		}
-	}()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+	defer cancel()
 
-	s.upd.Run(ctx)
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case err := <-srvErr:
-		slog.Error(
-			"server error",
-			slog.String("msg", err.Error()),
-			slog.String("service", "scrapper"),
-		)
-	case err := <-notifierErr:
-		slog.Error(
-			"notifier error",
-			slog.String("msg", err.Error()),
-			slog.String("service", "scrapper"),
-		)
-	case sig := <-stop:
-		slog.Info(
-			"received shutdown signal",
-			slog.String("signal", sig.String()),
-			slog.String("service", "scrapper"),
-		)
+	errs := []error{runErr}
+	if err := s.srv.Shutdown(shutdownCtx); err != nil {
+		errs = append(errs, fmt.Errorf("failed to shutdown server: %w", err))
 	}
 
-	if err := s.srv.Shutdown(ctx); err != nil {
-		return err
+	if err := s.sender.Stop(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close update sender: %w", err))
 	}
 
-	return nil
+	return errors.Join(errs...)
 }

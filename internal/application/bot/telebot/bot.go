@@ -7,6 +7,7 @@ import (
 
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 type TgAPI interface {
@@ -31,50 +32,69 @@ type Command interface {
 	Stage() (string, bool)
 	Validate(input string) error
 	Done() bool
-	Request() string
+	Request(ctx context.Context) (string, error)
 	Name() string
 }
 
-type Bot struct {
-	Tgb            TgAPI
-	Client         ScrapperClient
-	CurrentCommand Command
+type Cache interface {
+	Add(ctx context.Context, chatID int64, link sclient.LinkResponse) error
+	Delete(ctx context.Context, chatID int64, req sclient.RemoveLinkRequest) error
+	Get(ctx context.Context, chatID int64) (sclient.ListLinksResponse, error)
 }
 
-func New(client ScrapperClient, api TgAPI) *Bot {
+type Bot struct {
+	Tgb           TgAPI
+	Client        ScrapperClient
+	CommandStates *xsync.Map[int64, Command]
+	Cache         Cache
+}
+
+func New(client ScrapperClient, api TgAPI, cache Cache) *Bot {
 	return &Bot{
-		Tgb:    api,
-		Client: client,
+		Tgb:           api,
+		Client:        client,
+		CommandStates: xsync.NewMap[int64, Command](),
+		Cache:         cache,
 	}
 }
 
-func (b *Bot) Run(ctx context.Context) {
+func (b *Bot) Run(ctx context.Context) error {
 	updates := b.ConfigureUpdates()
 
 	for update := range updates {
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		default:
+		}
+
 		msg, query := update.Message, update.CallbackQuery
 
 		if msg == nil && query == nil {
 			continue
 		}
 
-		var reply tgbotapi.MessageConfig
+		go func() {
+			var reply tgbotapi.MessageConfig
 
-		if query != nil {
-			reply = b.QueryHandler(query)
-		} else {
-			reply = b.MessageHandler(msg)
-		}
+			if query != nil {
+				reply = b.QueryHandler(ctx, query)
+			} else {
+				reply = b.MessageHandler(ctx, msg)
+			}
 
-		if _, err := b.Tgb.Send(reply); err != nil {
-			slog.Error(
-				"telebot: failed to reply",
-				slog.String("msg", err.Error()),
-				slog.String("reply", reply.Text),
-				slog.String("service", "bot"),
-			)
-		}
+			if _, err := b.Tgb.Send(reply); err != nil {
+				slog.Error(
+					"telebot: failed to reply",
+					slog.String("msg", err.Error()),
+					slog.String("reply", reply.Text),
+					slog.String("service", "bot"),
+				)
+			}
+		}()
 	}
+
+	return nil
 }
 
 const (

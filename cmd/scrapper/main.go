@@ -22,6 +22,7 @@ func main() {
 			sinit.Transactor,
 			sinit.Storage,
 			sinit.BotClient,
+			sinit.Serializer,
 			fx.Annotate(
 				sinit.StackClient,
 				fx.ResultTags(`name:"stack"`),
@@ -50,6 +51,9 @@ func main() {
 					"",
 				),
 			),
+			sinit.KafkaWriter,
+			sinit.AsyncSender,
+			sinit.UpdateSender,
 			sinit.ScrapperServer,
 			sinit.ScrapperService,
 		),

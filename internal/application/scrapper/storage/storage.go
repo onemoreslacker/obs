@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
@@ -84,6 +85,11 @@ func (s *Storage) AddLink(ctx context.Context, link sapi.AddLinkRequest, chatID 
 	var linkID int64
 
 	err := s.tx.WithTransaction(ctx, func(ctx context.Context) error {
+		_, err := s.subs.GetLinkID(ctx, link.Link, chatID)
+		if !errors.Is(err, sapi.ErrLinkNotExists) {
+			return fmt.Errorf("storage: %w", sapi.ErrLinkAlreadyExists)
+		}
+
 		id, err := s.links.Add(ctx, link.Link)
 		if err != nil {
 			return fmt.Errorf("storage: failed to create link: %w", err)
@@ -138,6 +144,7 @@ func (s *Storage) TouchLink(ctx context.Context, linkID int64) error {
 }
 
 func (s *Storage) GetLinksWithChat(ctx context.Context, chatID int64) ([]sapi.LinkResponse, error) {
+
 	return s.subs.GetLinksWithChat(ctx, chatID)
 }
 

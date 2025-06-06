@@ -9,10 +9,10 @@ import (
 )
 
 type API struct {
-	tc UpdateSender
+	tc Sender
 }
 
-type UpdateSender interface {
+type Sender interface {
 	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
 }
 
@@ -30,7 +30,8 @@ func (a *API) PostUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := a.tc.Send(tgbotapi.NewMessage(
-		params.TgChatId, fmt.Sprintf("%s: %s", params.Description, params.Url))); err != nil {
+		params.TgChatId,
+		fmt.Sprintf("✨ New update via %s!\n\n %s", params.Url, params.Description))); err != nil {
 	}
 
 	respondWithJSON(w, http.StatusOK, http.NoBody)

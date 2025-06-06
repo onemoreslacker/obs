@@ -19,6 +19,13 @@ func main() {
 			binit.ScrapperClient,
 			binit.Telebot,
 			binit.BotServer,
+			binit.Deserializer,
+			binit.KafkaWriter,
+			binit.KafkaReader,
+			binit.DLQHandler,
+			binit.AsyncReceiver,
+			binit.UpdateReceiver,
+			binit.Cache,
 			binit.BotService,
 		),
 		fx.Invoke(func(

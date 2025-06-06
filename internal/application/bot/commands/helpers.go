@@ -2,11 +2,15 @@ package commands
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 )
 
@@ -22,6 +26,21 @@ const (
 	TagsManual    = "💥 Invalid tags! Use spaces to separate (e.g. 'work hobby')."
 	FiltersManual = "💥 Invalid format! Use 'filter:value' (e.g. 'user:dummy')."
 )
+
+type Client interface {
+	PostLinks(ctx context.Context, params *sclient.PostLinksParams, body sclient.PostLinksJSONRequestBody,
+		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
+	DeleteLinks(ctx context.Context, params *sclient.DeleteLinksParams, body sclient.DeleteLinksJSONRequestBody,
+		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
+	GetLinks(ctx context.Context, params *sclient.GetLinksParams,
+		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
+}
+
+type Cache interface {
+	Add(ctx context.Context, chatID int64, link sclient.LinkResponse) error
+	Delete(ctx context.Context, chatID int64, req sclient.RemoveLinkRequest) error
+	Get(ctx context.Context, chatID int64) (sclient.ListLinksResponse, error)
+}
 
 func ConstructListMessage(links []sclient.LinkResponse) string {
 	var buf bytes.Buffer
@@ -67,8 +86,8 @@ func ValidateLink(link string) error {
 		return ErrInvalidLinkFormat
 	}
 
-	if !((strings.Contains(link, "stackoverflow") && strings.Contains(link, "questions")) ||
-		strings.Contains(link, "github")) {
+	if !((strings.Contains(link, config.StackOverflow) && strings.Contains(link, "questions")) ||
+		strings.Contains(link, config.GitHub)) {
 		return ErrInvalidLinkFormat
 	}
 
@@ -103,4 +122,29 @@ func ValidateFilters(input string) error {
 	}
 
 	return nil
+}
+
+func (c *List) GetLinksWithCache(ctx context.Context) (sclient.ListLinksResponse, error) {
+	cached, err := c.Cache.Get(ctx, c.Traits.ChatID)
+	if err == nil {
+		return cached, nil
+	}
+
+	params := &sclient.GetLinksParams{TgChatId: c.Traits.ChatID}
+	resp, err := c.Client.GetLinks(ctx, params)
+	if err != nil {
+		return sclient.ListLinksResponse{}, fmt.Errorf("command list: failed to get links: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return sclient.ListLinksResponse{}, fmt.Errorf("command list: client response code: %d", resp.StatusCode)
+	}
+
+	var links sclient.ListLinksResponse
+	if err = json.NewDecoder(resp.Body).Decode(&links); err != nil {
+		return sclient.ListLinksResponse{}, fmt.Errorf("command list: failed to decode links response: %w", err)
+	}
+
+	return links, nil
 }

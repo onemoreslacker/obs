@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"runtime"
-	"sync"
 
-	bclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/bot"
+	"github.com/es-debug/backend-academy-2024-go-template/config"
 	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/go-co-op/gocron/v2"
@@ -24,26 +21,26 @@ type Storage interface {
 	UpdateLinkActivity(ctx context.Context, linkID int64, status bool) error
 }
 
-type Sender interface {
-	PostUpdates(ctx context.Context, body bclient.PostUpdatesJSONRequestBody,
-		reqEditors ...bclient.RequestEditorFn) (*http.Response, error)
+type UpdateSender interface {
+	Send(ctx context.Context, chatID int64, url, description string) error
 }
 
 type Notifier struct {
 	Storage Storage
 	GitHub  ExternalClient
 	Stack   ExternalClient
-	Sender  Sender
+	Sender  UpdateSender
 	Sch     gocron.Scheduler
-	Guard   chan struct{}
+	Sem     chan struct{}
 }
 
 func New(
 	storage Storage,
 	github ExternalClient,
 	stack ExternalClient,
-	sender Sender,
+	sender UpdateSender,
 	sch gocron.Scheduler,
+	cfg *config.Notifier,
 ) *Notifier {
 	return &Notifier{
 		Storage: storage,
@@ -51,7 +48,7 @@ func New(
 		Stack:   stack,
 		Sender:  sender,
 		Sch:     sch,
-		Guard:   make(chan struct{}, runtime.GOMAXPROCS(0)),
+		Sem:     make(chan struct{}, cfg.NumWorkers),
 	}
 }
 
@@ -88,27 +85,25 @@ func (n *Notifier) PushUpdates(ctx context.Context) {
 		)
 	}
 
-	wg := sync.WaitGroup{}
-
 	for _, chatID := range chatIDs {
-		wg.Add(1)
-		n.Guard <- struct{}{}
+		select {
+		case <-ctx.Done():
+			return
+		case n.Sem <- struct{}{}:
+			go func() {
+				defer func() {
+					<-n.Sem
+				}()
 
-		go func(id int64) {
-			defer func() {
-				<-n.Guard
-				wg.Done()
+				if err := n.ProcessChat(ctx, chatID); err != nil {
+					slog.Error("notifier: processing failed",
+						slog.Int64("chat_id", chatID),
+						slog.String("error", err.Error()),
+					)
+				}
 			}()
-
-			if err := n.ProcessChat(ctx, id); err != nil {
-				slog.Error("notifier: processing failed",
-					slog.Int64("chat_id", id),
-					slog.String("error", err.Error()))
-			}
-		}(chatID)
+		}
 	}
-
-	wg.Wait()
 }
 
 func (n *Notifier) ProcessChat(ctx context.Context, chatID int64) error {

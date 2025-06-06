@@ -2,11 +2,11 @@ package updater
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"runtime"
-	"sync"
 	"time"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
 	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/go-co-op/gocron/v2"
@@ -27,7 +27,8 @@ type Updater struct {
 	GitHub  ExternalClient
 	Stack   ExternalClient
 	Sch     gocron.Scheduler
-	Cfg     updaterConfig
+	Sem     chan struct{}
+	Cfg     *config.Updater
 }
 
 func New(
@@ -35,95 +36,75 @@ func New(
 	github ExternalClient,
 	stack ExternalClient,
 	sch gocron.Scheduler,
-	opts ...Option,
+	cfg *config.Updater,
 ) *Updater {
-	cfg := updaterConfig{
-		batchSize:  1000,
-		workersNum: runtime.GOMAXPROCS(0),
-	}
-
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-
 	return &Updater{
 		Storage: storage,
 		GitHub:  github,
 		Stack:   stack,
 		Sch:     sch,
+		Sem:     make(chan struct{}, cfg.NumWorkers),
 		Cfg:     cfg,
 	}
 }
 
-func (upd *Updater) Run(ctx context.Context) {
-	upd.ScrapeLinks(ctx)
+func (upd *Updater) Run(ctx context.Context) error {
+	return upd.ScrapeLinks(ctx)
 }
 
-func (upd *Updater) ScrapeLinks(ctx context.Context) {
+func (upd *Updater) ScrapeLinks(ctx context.Context) error {
 	for {
-		links, err := upd.Storage.GetLinks(ctx, upd.Cfg.batchSize)
+		links, err := upd.Storage.GetLinks(ctx, upd.Cfg.BatchSize)
 		if err != nil {
-			slog.Error(
+			slog.Warn(
 				"updater: failed to get links",
 				slog.String("msg", err.Error()),
 			)
 		}
 
-		n := len(links)
-		wg := sync.WaitGroup{}
+		for _, link := range links {
+			select {
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			case upd.Sem <- struct{}{}:
+				go func() {
+					defer func() { <-upd.Sem }()
 
-		step := n / upd.Cfg.workersNum
-
-		for off := 0; off < n; off += step {
-			end := min(n, off+step)
-
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-				upd.ProcessLink(ctx, links[off:end])
-			}()
+					if err := upd.ProcessLink(ctx, link); err != nil {
+						slog.Warn(
+							"updater: failed to process link",
+							slog.String("msg", err.Error()),
+						)
+					}
+				}()
+			}
 		}
-
-		wg.Wait()
 
 		select {
 		case <-ctx.Done():
-			return
+			return context.Cause(ctx)
 		case <-time.After(5 * time.Minute):
 		}
 	}
 }
 
-func (upd *Updater) ProcessLink(ctx context.Context, batch []sapi.LinkResponse) {
-	for _, link := range batch {
-		updated, err := upd.CheckActivity(ctx, link.Url)
-		if err != nil {
-			slog.Error(
-				"updater: failed to check link activity",
-				slog.String("msg", err.Error()),
-			)
-
-			continue
-		}
-
-		if err := upd.Storage.TouchLink(ctx, link.Id); err != nil {
-			slog.Error(
-				"updater: failed to update link",
-				slog.String("msg", err.Error()),
-			)
-			continue
-		}
-
-		if !updated {
-			continue
-		}
-
-		if err := upd.Storage.UpdateLinkActivity(ctx, link.Id, updated); err != nil {
-			slog.Error(
-				"updater: failed to update link activity",
-				slog.String("msg", err.Error()),
-			)
-		}
+func (upd *Updater) ProcessLink(ctx context.Context, link sapi.LinkResponse) error {
+	updated, err := upd.CheckActivity(ctx, link.Url)
+	if err != nil {
+		return fmt.Errorf("failed to check activity: %w", err)
 	}
+
+	if !updated {
+		return nil
+	}
+
+	if err := upd.Storage.UpdateLinkActivity(ctx, link.Id, updated); err != nil {
+		return fmt.Errorf("failed to update link activity: %w", err)
+	}
+
+	if err := upd.Storage.TouchLink(ctx, link.Id); err != nil {
+		return fmt.Errorf("failed to touch link: %w", err)
+	}
+
+	return nil
 }

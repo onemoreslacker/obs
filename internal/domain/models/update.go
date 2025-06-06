@@ -5,24 +5,6 @@ import (
 	"strings"
 )
 
-type StackOverflowUpdate struct {
-	Type  string
-	Owner struct {
-		Username string `json:"display_name"`
-	} `json:"owner"`
-	CreatedAt int64  `json:"creation_date"`
-	Body      string `json:"body"`
-}
-
-type GitHubUpdate struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	User  struct {
-		Login string `json:"login"`
-	} `json:"user"`
-	CreatedAt string `json:"created_at"`
-}
-
 type Update struct {
 	Title     string
 	CreatedAt string
