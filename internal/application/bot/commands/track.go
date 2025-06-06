@@ -2,31 +2,29 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
-	"time"
 
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
-type Poster interface {
-	PostLinks(ctx context.Context, params *sclient.PostLinksParams, body sclient.PostLinksJSONRequestBody,
-		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
-}
-
 type Track struct {
 	Traits   *models.Traits
 	Pipeline []*models.Stage
 	Link     sclient.AddLinkRequest
-	Client   Poster
+	Client   Client
+	Cache    Cache
 }
 
-func NewTrack(chatID int64, client Poster) *Track {
+func NewTrack(chatID int64, client Client, cache Cache) *Track {
 	return &Track{
 		Traits:   models.NewTraits(TrackSpan, chatID, CommandTrack),
 		Pipeline: createTrackStages(),
 		Link:     sclient.AddLinkRequest{},
 		Client:   client,
+		Cache:    cache,
 	}
 }
 
@@ -55,7 +53,7 @@ func (c *Track) Done() bool {
 	return c.Traits.Stage == c.Traits.Span
 }
 
-func (c *Track) Request() string {
+func (c *Track) Request(ctx context.Context) (string, error) {
 	params := &sclient.PostLinksParams{
 		TgChatId: c.Traits.ChatID,
 	}
@@ -66,24 +64,30 @@ func (c *Track) Request() string {
 		Filters: c.Link.Filters,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	resp, err := c.Client.PostLinks(ctx, params, body)
 	if err != nil {
-		return FailedTrack
+		return FailedTrack, fmt.Errorf("command track: failed to post link: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusConflict {
-		return LinkAlreadyTracked
+		return LinkAlreadyTracked, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return FailedTrack
+		return FailedTrack, fmt.Errorf("command list: client response code: %d", resp.StatusCode)
 	}
 
-	return SuccessfulTrack
+	var link sclient.LinkResponse
+	if err = json.NewDecoder(resp.Body).Decode(&link); err != nil {
+		return SuccessfulTrack, fmt.Errorf("command track: failed to deserialize link response: %w", err)
+	}
+
+	if err = c.Cache.Add(ctx, c.Traits.ChatID, link); err != nil {
+		return SuccessfulTrack, fmt.Errorf("command track: failed to add new link to cache: %w", err)
+	}
+
+	return SuccessfulTrack, nil
 }
 
 func (c *Track) Name() string {
@@ -103,8 +107,8 @@ func createTrackStages() []*models.Stage {
 const (
 	CommandTrack       = "track"
 	TrackSpan          = 5
-	TrackRequest       = "✨ Please, enter the Link you want to track! (press /cancel to quit)"
-	FailedTrack        = "💥 Failed to track Link!"
-	LinkAlreadyTracked = "⚡️ This Link is already being tracked!"
-	SuccessfulTrack    = "✨ This Link is now being tracked!"
+	TrackRequest       = "✨ Please, enter the link you want to track! (press /cancel to quit)"
+	FailedTrack        = "💥 Failed to track link!"
+	LinkAlreadyTracked = "⚡️ This link is already being tracked!"
+	SuccessfulTrack    = "✨ This link is now being tracked!"
 )

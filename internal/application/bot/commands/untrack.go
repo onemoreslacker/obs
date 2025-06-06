@@ -2,30 +2,27 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"time"
 
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
-type Deleter interface {
-	DeleteLinks(ctx context.Context, params *sclient.DeleteLinksParams, body sclient.DeleteLinksJSONRequestBody,
-		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
-}
-
 type Untrack struct {
 	Traits   *models.Traits
 	Pipeline []*models.Stage
 	Link     sclient.RemoveLinkRequest
-	Client   Deleter
+	Client   Client
+	Cache    Cache
 }
 
-func NewUntrack(chatID int64, client Deleter) *Untrack {
+func NewUntrack(chatID int64, client Client, cache Cache) *Untrack {
 	return &Untrack{
 		Traits:   models.NewTraits(UntrackSpan, chatID, CommandUntrack),
 		Pipeline: createUntrackStages(),
 		Client:   client,
+		Cache:    cache,
 	}
 }
 
@@ -52,29 +49,30 @@ func (c *Untrack) Done() bool {
 	return c.Traits.Stage == c.Traits.Span
 }
 
-func (c *Untrack) Request() string {
+func (c *Untrack) Request(ctx context.Context) (string, error) {
 	params := &sclient.DeleteLinksParams{TgChatId: c.Traits.ChatID}
 
 	body := sclient.RemoveLinkRequest{Link: c.Link.Link}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	resp, err := c.Client.DeleteLinks(ctx, params, body)
 	if err != nil {
-		return FailedUntrack
+		return FailedUntrack, fmt.Errorf("command untrack: failed to delete link: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusBadRequest {
-		return FailedUntrack
-	}
-
 	if resp.StatusCode == http.StatusConflict {
-		return LinkNotYetTracked
+		return LinkNotYetTracked, nil
 	}
 
-	return SuccessfulUntrack
+	if resp.StatusCode != http.StatusOK {
+		return FailedUntrack, fmt.Errorf("command untrack: client response code: %d", resp.StatusCode)
+	}
+
+	if err = c.Cache.Delete(ctx, c.Traits.ChatID, body); err != nil {
+		return SuccessfulTrack, fmt.Errorf("command untrack: failed to delete link from cache: %w", err)
+	}
+
+	return SuccessfulUntrack, nil
 }
 
 func (c *Untrack) Name() string {

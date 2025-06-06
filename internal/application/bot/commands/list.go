@@ -2,31 +2,25 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"time"
 
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 )
 
-type Retriever interface {
-	GetLinks(ctx context.Context, params *sclient.GetLinksParams,
-		reqEditors ...sclient.RequestEditorFn) (*http.Response, error)
-}
-
 type List struct {
 	Traits   *models.Traits
 	Pipeline []*models.Stage
 	Link     sclient.AddLinkRequest
-	Client   Retriever
+	Client   Client
+	Cache    Cache
 }
 
-func NewList(chatID int64, client Retriever) *List {
+func NewList(chatID int64, client Client, cache Cache) *List {
 	return &List{
 		Traits:   models.NewTraits(ListSpan, chatID, CommandList),
 		Pipeline: createListStages(),
 		Client:   client,
+		Cache:    cache,
 	}
 }
 
@@ -55,28 +49,10 @@ func (c *List) Done() bool {
 	return c.Traits.Stage == c.Traits.Span
 }
 
-func (c *List) Request() string {
-	params := &sclient.GetLinksParams{
-		TgChatId: c.Traits.ChatID,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	resp, err := c.Client.GetLinks(ctx, params)
+func (c *List) Request(ctx context.Context) (string, error) {
+	list, err := c.GetLinksWithCache(ctx)
 	if err != nil {
-		return FailedList
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return FailedList
-	}
-
-	var list sclient.ListLinksResponse
-
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return FailedList
+		return FailedList, err
 	}
 
 	sievedLinks := make([]sclient.LinkResponse, 0, list.Size)
@@ -89,10 +65,10 @@ func (c *List) Request() string {
 	}
 
 	if len(sievedLinks) == 0 {
-		return EmptyList
+		return EmptyList, nil
 	}
 
-	return ConstructListMessage(sievedLinks)
+	return ConstructListMessage(sievedLinks), nil
 }
 
 func (c *List) Name() string {
