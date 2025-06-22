@@ -2,66 +2,100 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
+	"fmt"
 	"net/url"
-	"path"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/fetcher"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	"resty.dev/v3"
 )
 
 type StackOverflowClient struct {
-	httpClient *http.Client
+	client *resty.Client
 }
 
-func NewStackOverflowClient() *StackOverflowClient {
+func NewStackOverflowClient(cfg *config.Config) *StackOverflowClient {
+	cb := resty.NewCircuitBreaker().
+		SetTimeout(5 * time.Second).
+		SetFailureThreshold(3).
+		SetSuccessThreshold(1)
+
+	client := resty.New().
+		SetBaseURL("https://api.stackexchange.com/2.3/questions/").
+		SetHeader("X-API-Access", cfg.Secrets.StackOverflowToken).
+		SetTimeout(cfg.TimeoutPolicy.ClientOverall).
+		SetRetryCount(int(cfg.RetryPolicy.Attempts)).
+		SetRetryWaitTime(cfg.RetryPolicy.Delay).
+		AddRetryConditions(func(res *resty.Response, err error) bool {
+			return !slices.Contains(cfg.RetryPolicy.StatusCodes, res.StatusCode())
+		}).
+		SetCircuitBreaker(cb)
+
 	return &StackOverflowClient{
-		httpClient: &http.Client{},
+		client: client,
 	}
 }
 
 type StackOverflowUpdate struct {
-	Type  string
+	Body  string `json:"body"`
 	Owner struct {
 		Username string `json:"display_name"`
 	} `json:"owner"`
-	CreatedAt int64  `json:"creation_date"`
-	Body      string `json:"body"`
+	CreatedAt int64 `json:"creation_date"`
 }
 
 type StackOverflowUpdates struct {
 	Items []StackOverflowUpdate `json:"items"`
 }
 
-func (c *StackOverflowClient) RetrieveUpdates(ctx context.Context, link string) ([]models.Update, error) {
-	answersURL, err := buildStackOverflowAPIURL(link, "answers")
+func (s *StackOverflowClient) RetrieveUpdates(ctx context.Context, link string) ([]models.Update, error) {
+	u, err := url.Parse(link)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("stackoverflow client: failed to parse link")
 	}
 
-	answers, err := c.fetchStackOverflowUpdates(ctx, answersURL)
-	if err != nil {
-		return nil, err
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 2 {
+		return nil, fetcher.ErrInvalidRepoPath
 	}
 
-	commentsURL, err := buildStackOverflowAPIURL(link, "comments")
-	if err != nil {
-		return nil, err
+	questionID := parts[1]
+
+	s.client.SetContext(ctx).
+		SetPathParams(map[string]string{
+			"questionID": questionID,
+		}).
+		SetQueryParams(map[string]string{
+			"order":  "desc",
+			"sort":   "activity",
+			"site":   "stackoverflow",
+			"filter": "withbody",
+		})
+
+	var answers StackOverflowUpdates
+	if _, err := s.client.R().
+		SetResult(&answers).
+		Get("{questionID}/answers"); err != nil {
+		return nil, fmt.Errorf("stackoverflow client: failed to fetch answers updates")
 	}
 
-	comments, err := c.fetchStackOverflowUpdates(ctx, commentsURL)
-	if err != nil {
-		return nil, err
+	var comments StackOverflowUpdates
+	if _, err := s.client.R().
+		SetResult(&comments).
+		Get("{questionID}/comments"); err != nil {
+		return nil, fmt.Errorf("stackoverflow client: failed to fetch comments updates")
 	}
 
-	updates := make([]models.Update, len(answers.Items)+len(comments.Items))
+	updates := make([]models.Update, 0, len(answers.Items)+len(comments.Items))
 
 	for _, answer := range answers.Items {
 		updates = append(updates, models.NewUpdate(
 			"answer",
-			time.Unix(answer.CreatedAt, 0).Format(time.RFC1123),
+			time.Unix(answer.CreatedAt, 0).Format(time.RFC3339),
 			answer.Owner.Username,
 			answer.Body,
 		))
@@ -70,8 +104,8 @@ func (c *StackOverflowClient) RetrieveUpdates(ctx context.Context, link string) 
 	for _, comment := range comments.Items {
 		updates = append(updates, models.NewUpdate(
 			"comment",
+			time.Unix(comment.CreatedAt, 0).Format(time.RFC3339),
 			comment.Owner.Username,
-			time.Unix(comment.CreatedAt, 0).Format(time.RFC1123),
 			comment.Body,
 		))
 	}
@@ -79,56 +113,10 @@ func (c *StackOverflowClient) RetrieveUpdates(ctx context.Context, link string) 
 	return updates, nil
 }
 
-func (c *StackOverflowClient) fetchStackOverflowUpdates(ctx context.Context, apiURL string) (StackOverflowUpdates, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		return StackOverflowUpdates{}, err
+func (s *StackOverflowClient) Close() error {
+	if err := s.client.Close(); err != nil {
+		return fmt.Errorf("stackoverflow client: failed to cleanup resources: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return StackOverflowUpdates{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return StackOverflowUpdates{}, ErrRequestFailed
-	}
-
-	var answers StackOverflowUpdates
-
-	if err := json.NewDecoder(resp.Body).Decode(&answers.Items); err != nil {
-		return StackOverflowUpdates{}, err
-	}
-
-	return answers, nil
-}
-
-func buildStackOverflowAPIURL(link, basePath string) (string, error) {
-	u, err := url.Parse(link)
-	if err != nil {
-		return "", err
-	}
-
-	if u.Scheme == "" {
-		u.Scheme = "https"
-	}
-
-	parts := strings.Split(u.Path, "/")
-	parts = parts[:len(parts)-1]
-
-	cut := path.Join(strings.Join(parts, "/"), basePath)
-	u.Path = path.Join("api.stackexchange.com", cut)
-
-	query := u.Query()
-	query.Set("order", "desc")
-	query.Set("sort", "activity")
-	query.Set("site", "stackoverflow")
-	query.Set("filter", "withbody")
-	u.RawQuery = query.Encode()
-
-	return u.String(), nil
+	return nil
 }
