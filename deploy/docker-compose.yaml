@@ -72,9 +72,8 @@ services:
         
     kafka1:
         image: confluentinc/cp-kafka:7.1.2
-        command: [ "bash", "-c", "/etc/confluent/docker/run >/log/stdout.log 2>/log/stderr.log" ]
         volumes:
-            - ./containers-output/kafka1:/log
+            - kafka1-data:/var/lib/kafka/data
         hostname: kafka1
         container_name: kafka1
         ports:
@@ -98,9 +97,8 @@ services:
     
     kafka2:
         image: confluentinc/cp-kafka:7.1.2
-        command: [ "bash", "-c", "/etc/confluent/docker/run >/log/stdout.log 2>/log/stderr.log" ]
         volumes:
-            - ./containers-output/kafka2:/log
+            - kafka2-data:/var/lib/kafka/data
         hostname: kafka2
         container_name: kafka2
         ports:
@@ -147,3 +145,5 @@ networks:
 volumes:
     data:
     redis-data:
+    kafka1-data:
+    kafka2-data:
