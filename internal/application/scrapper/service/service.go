@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os/signal"
-	"syscall"
 
 	"github.com/es-debug/backend-academy-2024-go-template/config"
 	"golang.org/x/sync/errgroup"
@@ -21,71 +19,78 @@ type Server interface {
 	Shutdown(ctx context.Context) error
 }
 
-type UpdateSender interface {
+type Updater interface {
 	Send(ctx context.Context, chatID int64, url, description string) error
-	Stop() error
 }
 
 type ScrapperService struct {
-	updater  Runnable
+	fetcher  Runnable
 	notifier Runnable
-	sender   UpdateSender
+	updater  Updater
 	srv      Server
 }
 
 func New(
-	updater, notifier Runnable,
-	sender UpdateSender,
+	fetcher,
+	notifier Runnable,
+	updater Updater,
 	srv Server,
 ) *ScrapperService {
 	return &ScrapperService{
-		updater:  updater,
+		fetcher:  fetcher,
 		notifier: notifier,
-		sender:   sender,
+		updater:  updater,
 		srv:      srv,
 	}
 }
 
 func (s *ScrapperService) Run(ctx context.Context) error {
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := s.updater.Run(ctx); err != nil {
-			return fmt.Errorf("updater error: %w", err)
+		if err := s.fetcher.Run(ctx); err != nil {
+			return fmt.Errorf("scrapper service: %w", err)
 		}
 		return nil
 	})
 
 	g.Go(func() error {
 		if err := s.notifier.Run(ctx); err != nil {
-			return fmt.Errorf("notifier error: %w", err)
+			return fmt.Errorf("scrapper service: %w", err)
 		}
 		return nil
 	})
 
 	g.Go(func() error {
-		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("server error: %w", err)
+		srvErr := make(chan error, 1)
+		go func() {
+			srvErr <- s.srv.ListenAndServe()
+		}()
+
+		select {
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(
+				context.Background(),
+				config.ShutdownTimeout,
+			)
+			defer cancel()
+
+			if err := s.srv.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("scrapper service: failed to shutdown server: %w", err)
+			}
+
+			if err := <-srvErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("scrapper service: %w", err)
+			}
+
+			return nil
+		case err := <-srvErr:
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("scrapper service: %w", err)
+			}
+			return nil
 		}
-		return nil
 	})
 
-	runErr := g.Wait()
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
-	defer cancel()
-
-	errs := []error{runErr}
-	if err := s.srv.Shutdown(shutdownCtx); err != nil {
-		errs = append(errs, fmt.Errorf("failed to shutdown server: %w", err))
-	}
-
-	if err := s.sender.Stop(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close update sender: %w", err))
-	}
-
-	return errors.Join(errs...)
+	return g.Wait()
 }

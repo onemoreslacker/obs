@@ -167,6 +167,9 @@ func TestListRequest(t *testing.T) {
 
 				cache.On("Get", mock.Anything, chatID).
 					Once().Return(response, commands.ErrLinkNotExists)
+
+				cache.On("Add", mock.Anything, chatID, mock.Anything).
+					Twice().Return(nil)
 			},
 			expectedMsg: "1. https://github.com/example/repo\n",
 			wantErr:     false,

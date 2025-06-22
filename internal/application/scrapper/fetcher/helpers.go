@@ -1,4 +1,4 @@
-package updater
+package fetcher
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/es-debug/backend-academy-2024-go-template/config"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
-	"github.com/es-debug/backend-academy-2024-go-template/pkg"
+	"github.com/es-debug/backend-academy-2024-go-template/pkg/svcident"
 )
 
 type Option func(*updaterConfig)
@@ -28,22 +28,22 @@ type updaterConfig struct {
 	workersNum int
 }
 
-func (upd *Updater) CheckActivity(ctx context.Context, url string) (bool, error) {
+func (f *Fetcher) CheckActivity(ctx context.Context, link string) (bool, error) {
 	var (
 		updates []models.Update
 		err     error
 	)
 
-	service, err := pkg.ServiceFromURL(url)
+	service, err := svcident.FromLink(link)
 	if err != nil {
 		return false, err
 	}
 
 	switch service {
 	case config.GitHub:
-		updates, err = upd.GitHub.RetrieveUpdates(ctx, url)
+		updates, err = f.GitHub.RetrieveUpdates(ctx, link)
 	case config.StackOverflow:
-		updates, err = upd.Stack.RetrieveUpdates(ctx, url)
+		updates, err = f.Stack.RetrieveUpdates(ctx, link)
 	}
 
 	if err != nil {

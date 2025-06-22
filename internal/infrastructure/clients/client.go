@@ -11,12 +11,12 @@ type Client interface {
 	RetrieveUpdates(ctx context.Context, link string) ([]models.Update, error)
 }
 
-func New(source string) Client {
+func New(source string, cfg *config.Config) Client {
 	switch source {
 	case config.GitHub:
-		return NewGithubClient()
+		return NewGithubClient(cfg)
 	case config.StackOverflow:
-		return NewStackOverflowClient()
+		return NewStackOverflowClient(cfg)
 	}
 
 	return nil

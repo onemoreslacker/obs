@@ -2,22 +2,41 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
+	"fmt"
 	"net/url"
-	"path"
-	"time"
+	"slices"
+	"strings"
 
+	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/fetcher"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
+	"resty.dev/v3"
 )
 
 type GitHubClient struct {
-	httpClient *http.Client
+	client *resty.Client
 }
 
-func NewGithubClient() *GitHubClient {
+func NewGithubClient(cfg *config.Config) *GitHubClient {
+	cb := resty.NewCircuitBreaker().
+		SetTimeout(cfg.CircuitBreakerPolicy.Timeout).
+		SetFailureThreshold(cfg.CircuitBreakerPolicy.FailureThreshold).
+		SetSuccessThreshold(cfg.CircuitBreakerPolicy.MaxRequests)
+
+	client := resty.New().
+		SetBaseURL("https://api.github.com/repos/").
+		SetAuthScheme("Bearer").
+		SetAuthToken(cfg.Secrets.GitHubToken).
+		SetTimeout(cfg.TimeoutPolicy.ClientOverall).
+		SetRetryCount(int(cfg.RetryPolicy.Attempts)).
+		SetRetryWaitTime(cfg.RetryPolicy.Delay).
+		AddRetryConditions(func(res *resty.Response, err error) bool {
+			return !slices.Contains(cfg.RetryPolicy.StatusCodes, res.StatusCode())
+		}).
+		SetCircuitBreaker(cb)
+
 	return &GitHubClient{
-		httpClient: &http.Client{},
+		client: client,
 	}
 }
 
@@ -30,34 +49,44 @@ type GitHubUpdate struct {
 	CreatedAt string `json:"created_at"`
 }
 
-type GitHubUpdates struct {
-	Items []GitHubUpdate `json:"items"`
-}
-
-func (c *GitHubClient) RetrieveUpdates(ctx context.Context, link string) ([]models.Update, error) {
-	prURL, err := buildGitHubAPIURL(link, "pulls")
+func (g *GitHubClient) RetrieveUpdates(ctx context.Context, link string) ([]models.Update, error) {
+	u, err := url.Parse(link)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("github client: failed to parse link")
 	}
 
-	pulls, err := c.fetchGitHubUpdates(ctx, prURL)
-	if err != nil {
-		return nil, err
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 2 {
+		return nil, fetcher.ErrInvalidRepoPath
 	}
 
-	issuesURL, err := buildGitHubAPIURL(link, "issues")
-	if err != nil {
-		return nil, err
+	g.client.SetContext(ctx).
+		SetPathParams(map[string]string{
+			"owner": parts[0],
+			"repo":  parts[1],
+		}).
+		SetQueryParams(map[string]string{
+			"sort":      "updated",
+			"direction": "desc",
+		})
+
+	var pulls []GitHubUpdate
+	if _, err := g.client.R().
+		SetResult(&pulls).
+		Get("{owner}/{repo}/pulls"); err != nil {
+		return nil, fmt.Errorf("github client: failed to fetch issues updates")
 	}
 
-	issues, err := c.fetchGitHubUpdates(ctx, issuesURL)
-	if err != nil {
-		return nil, err
+	var issues []GitHubUpdate
+	if _, err := g.client.R().
+		SetResult(&issues).
+		Get("{owner}/{repo}/issues"); err != nil {
+		return nil, fmt.Errorf("github client: failed to fetch issues updates")
 	}
 
-	updates := make([]models.Update, 0, len(pulls.Items)+len(issues.Items))
+	updates := make([]models.Update, 0, len(pulls)+len(issues))
 
-	for _, pull := range pulls.Items {
+	for _, pull := range pulls {
 		updates = append(updates, models.NewUpdate(
 			pull.Title,
 			pull.CreatedAt,
@@ -66,7 +95,7 @@ func (c *GitHubClient) RetrieveUpdates(ctx context.Context, link string) ([]mode
 		))
 	}
 
-	for _, issue := range issues.Items {
+	for _, issue := range issues {
 		updates = append(updates, models.NewUpdate(
 			issue.Title,
 			issue.CreatedAt,
@@ -78,51 +107,10 @@ func (c *GitHubClient) RetrieveUpdates(ctx context.Context, link string) ([]mode
 	return updates, nil
 }
 
-func (c *GitHubClient) fetchGitHubUpdates(ctx context.Context, apiURL string) (GitHubUpdates, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		return GitHubUpdates{}, err
+func (g *GitHubClient) Close() error {
+	if err := g.client.Close(); err != nil {
+		return fmt.Errorf("github client: failed to cleanup resources: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return GitHubUpdates{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return GitHubUpdates{}, ErrRequestFailed
-	}
-
-	var updates GitHubUpdates
-
-	if err := json.NewDecoder(resp.Body).Decode(&updates.Items); err != nil {
-		return GitHubUpdates{}, err
-	}
-
-	return updates, nil
-}
-
-func buildGitHubAPIURL(link, suffix string) (string, error) {
-	u, err := url.Parse(link)
-	if err != nil {
-		return "", err
-	}
-
-	if u.Scheme == "" {
-		u.Scheme = "https"
-	}
-
-	u.Host = "api.github.com"
-	u.Path = path.Join("repos", u.Path, suffix)
-
-	query := u.Query()
-	query.Set("sort", "updated")
-	query.Set("direction", "desc")
-	u.RawQuery = query.Encode()
-
-	return u.String(), nil
+	return nil
 }

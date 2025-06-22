@@ -3,15 +3,16 @@ package list_test
 import (
 	"context"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"testing"
 
-	"github.com/es-debug/backend-academy-2024-go-template/config"
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/commands"
 	botinit "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/init"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/list"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -47,12 +48,13 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to get container's port: %s", err)
 	}
 
-	cache = botinit.Cache(&config.Config{
-		Cache: config.Cache{
-			Host: host,
-			Port: strconv.Itoa(port.Int()),
-		},
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     net.JoinHostPort(host, strconv.Itoa(port.Int())),
+		Password: "",
+		DB:       0,
 	})
+
+	cache = botinit.ListCache(rdb)
 
 	os.Exit(m.Run())
 }

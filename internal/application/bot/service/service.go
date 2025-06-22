@@ -4,16 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/signal"
-	"syscall"
+	"net/http"
 
 	"github.com/es-debug/backend-academy-2024-go-template/config"
+	"github.com/segmentio/kafka-go"
 	"golang.org/x/sync/errgroup"
 )
 
-type UpdateReceiver interface {
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
+type Server interface {
+	ListenAndServe() error
+	Shutdown(ctx context.Context) error
+}
+
+type UpdateSubscriber interface {
+	Start(
+		ctx context.Context,
+		process func(ctx context.Context, msg kafka.Message) error,
+	) error
+}
+
+type Processor interface {
+	Process(ctx context.Context, msg kafka.Message) error
 }
 
 type Runnable interface {
@@ -21,33 +32,46 @@ type Runnable interface {
 }
 
 type BotService struct {
-	receiver UpdateReceiver
-	bot      Runnable
+	srv              Server
+	updateSubscriber UpdateSubscriber
+	processor        Processor
+	bot              Runnable
 }
 
-func New(receiver UpdateReceiver, bot Runnable) *BotService {
+func New(
+	srv Server,
+	updateSubscriber UpdateSubscriber,
+	processor Processor,
+	bot Runnable,
+) *BotService {
 	return &BotService{
-		receiver: receiver,
-		bot:      bot,
+		srv:              srv,
+		updateSubscriber: updateSubscriber,
+		processor:        processor,
+		bot:              bot,
 	}
 }
 
-func (s *BotService) Run(ctx context.Context) error {
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
+func (b *BotService) Run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := s.receiver.Start(ctx); err != nil {
-			return fmt.Errorf("update receiver error: %w", err)
+		if err := b.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("bot service: %w", err)
 		}
 		return nil
 	})
 
 	g.Go(func() error {
-		if err := s.bot.Run(ctx); err != nil {
-			return fmt.Errorf("telebot error: %w", err)
+		if err := b.updateSubscriber.Start(ctx, b.processor.Process); err != nil {
+			return fmt.Errorf("bot service: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := b.bot.Run(ctx); err != nil {
+			return fmt.Errorf("bot service: %w", err)
 		}
 		return nil
 	})
@@ -58,8 +82,8 @@ func (s *BotService) Run(ctx context.Context) error {
 	defer cancel()
 
 	errs := []error{runErr}
-	if err := s.receiver.Stop(shutdownCtx); err != nil {
-		errs = append(errs, fmt.Errorf("failed to stop update receiver: %w", err))
+	if err := b.srv.Shutdown(shutdownCtx); err != nil {
+		errs = append(errs, fmt.Errorf("failed to stop bot server: %w", err))
 	}
 
 	return errors.Join(errs...)

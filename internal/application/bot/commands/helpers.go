@@ -146,5 +146,11 @@ func (c *List) GetLinksWithCache(ctx context.Context) (sclient.ListLinksResponse
 		return sclient.ListLinksResponse{}, fmt.Errorf("command list: failed to decode links response: %w", err)
 	}
 
+	for _, link := range links.Links {
+		if err = c.Cache.Add(ctx, c.Traits.ChatID, link); err != nil {
+			return links, fmt.Errorf("command list: failed to validate cache: %w", err)
+		}
+	}
+
 	return links, nil
 }

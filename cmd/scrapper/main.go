@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"os/signal"
+	"syscall"
 
 	sinit "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/init"
 	ss "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/fx"
 )
 
@@ -23,6 +26,7 @@ func main() {
 			sinit.Storage,
 			sinit.BotClient,
 			sinit.Serializer,
+			sinit.Limiter,
 			fx.Annotate(
 				sinit.StackClient,
 				fx.ResultTags(`name:"stack"`),
@@ -40,29 +44,37 @@ func main() {
 					`name:"stack"`,
 					"",
 					"",
+					"",
 				),
 			),
 			fx.Annotate(
-				sinit.Updater,
+				sinit.Fetcher,
 				fx.ParamTags(
 					"",
 					`name:"github"`,
 					`name:"stack"`,
 					"",
+					"",
 				),
 			),
-			sinit.KafkaWriter,
-			sinit.AsyncSender,
-			sinit.UpdateSender,
+			sinit.Updater,
+			sinit.KafkaUpdateWriter,
+			sinit.UpdatePublisher,
 			sinit.ScrapperServer,
 			sinit.ScrapperService,
 		),
 		fx.Invoke(func(
 			pool *pgxpool.Pool,
+			updateWriter *kafka.Writer,
 			service *ss.ScrapperService,
 		) error {
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
+
 			defer pool.Close()
-			return service.Run(context.Background())
+			defer updateWriter.Close()
+
+			return service.Run(ctx)
 		}),
 	)
 

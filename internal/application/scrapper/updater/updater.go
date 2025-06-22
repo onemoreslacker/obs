@@ -3,108 +3,80 @@ package updater
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"time"
+	"net/http"
 
 	"github.com/es-debug/backend-academy-2024-go-template/config"
-	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
-	"github.com/go-co-op/gocron/v2"
+	bclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/bot"
 )
 
-type ExternalClient interface {
-	RetrieveUpdates(ctx context.Context, link string) ([]models.Update, error)
+type HTTPSender interface {
+	PostUpdates(ctx context.Context, body bclient.PostUpdatesJSONRequestBody,
+		reqEditors ...bclient.RequestEditorFn) (*http.Response, error)
 }
 
-type Storage interface {
-	GetLinks(ctx context.Context, batch uint64) ([]sapi.LinkResponse, error)
-	TouchLink(ctx context.Context, linkID int64) error
-	UpdateLinkActivity(ctx context.Context, linkID int64, status bool) error
+type KafkaSender interface {
+	Send(ctx context.Context, chatID int64, url, description string) error
 }
 
 type Updater struct {
-	Storage Storage
-	GitHub  ExternalClient
-	Stack   ExternalClient
-	Sch     gocron.Scheduler
-	Sem     chan struct{}
-	Cfg     *config.Updater
+	httpSender  HTTPSender
+	kafkaSender KafkaSender
+	transport   string
 }
 
 func New(
-	storage Storage,
-	github ExternalClient,
-	stack ExternalClient,
-	sch gocron.Scheduler,
-	cfg *config.Updater,
+	HTTPSender HTTPSender,
+	KafkaSender KafkaSender,
+	transport string,
 ) *Updater {
 	return &Updater{
-		Storage: storage,
-		GitHub:  github,
-		Stack:   stack,
-		Sch:     sch,
-		Sem:     make(chan struct{}, cfg.NumWorkers),
-		Cfg:     cfg,
+		httpSender:  HTTPSender,
+		kafkaSender: KafkaSender,
+		transport:   transport,
 	}
 }
 
-func (upd *Updater) Run(ctx context.Context) error {
-	return upd.ScrapeLinks(ctx)
-}
+func (u *Updater) Send(ctx context.Context, chatID int64, url, description string) error {
+	var primaryErr, secondaryErr error
 
-func (upd *Updater) ScrapeLinks(ctx context.Context) error {
-	for {
-		links, err := upd.Storage.GetLinks(ctx, upd.Cfg.BatchSize)
-		if err != nil {
-			slog.Warn(
-				"updater: failed to get links",
-				slog.String("msg", err.Error()),
-			)
+	switch u.transport {
+	case config.HTTPTransport:
+		if primaryErr = u.httpSend(ctx, chatID, url, description); primaryErr != nil {
+			secondaryErr = u.kafkaSend(ctx, chatID, url, description)
 		}
-
-		for _, link := range links {
-			select {
-			case <-ctx.Done():
-				return context.Cause(ctx)
-			case upd.Sem <- struct{}{}:
-				go func() {
-					defer func() { <-upd.Sem }()
-
-					if err := upd.ProcessLink(ctx, link); err != nil {
-						slog.Warn(
-							"updater: failed to process link",
-							slog.String("msg", err.Error()),
-						)
-					}
-				}()
-			}
+	case config.KafkaTransport:
+		if primaryErr = u.kafkaSend(ctx, chatID, url, description); primaryErr != nil {
+			secondaryErr = u.httpSend(ctx, chatID, url, description)
 		}
-
-		select {
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		case <-time.After(5 * time.Minute):
-		}
-	}
-}
-
-func (upd *Updater) ProcessLink(ctx context.Context, link sapi.LinkResponse) error {
-	updated, err := upd.CheckActivity(ctx, link.Url)
-	if err != nil {
-		return fmt.Errorf("failed to check activity: %w", err)
+	default:
+		return ErrUnknownTransportMode
 	}
 
-	if !updated {
-		return nil
-	}
-
-	if err := upd.Storage.UpdateLinkActivity(ctx, link.Id, updated); err != nil {
-		return fmt.Errorf("failed to update link activity: %w", err)
-	}
-
-	if err := upd.Storage.TouchLink(ctx, link.Id); err != nil {
-		return fmt.Errorf("failed to touch link: %w", err)
+	if primaryErr != nil && secondaryErr != nil {
+		return fmt.Errorf("update sender error: %w", ErrSendUpdate)
 	}
 
 	return nil
+}
+
+func (u *Updater) httpSend(ctx context.Context, chatID int64, url, description string) error {
+	resp, err := u.httpSender.PostUpdates(ctx, bclient.PostUpdatesJSONRequestBody{
+		TgChatId:    chatID,
+		Url:         url,
+		Description: description,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to post updates: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ErrHTTPSendUpdate
+	}
+
+	return nil
+}
+
+func (u *Updater) kafkaSend(ctx context.Context, chatID int64, url, description string) error {
+	return u.kafkaSender.Send(ctx, chatID, url, description)
 }

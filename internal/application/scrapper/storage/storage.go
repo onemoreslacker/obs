@@ -42,6 +42,7 @@ type FiltersRepository interface {
 type Transactor interface {
 	WithTransaction(ctx context.Context, txFunc func(ctx context.Context) error) (err error)
 }
+
 type Storage struct {
 	chats   ChatsRepository
 	links   LinksRepository

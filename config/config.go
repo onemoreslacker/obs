@@ -13,23 +13,34 @@ import (
 )
 
 const (
-	Scheme          = "http"
-	SchemeSecure    = "https"
-	GitHub          = "github"
-	StackOverflow   = "stackoverflow"
-	Orm             = "orm"
-	Sql             = "sql"
-	Sync            = "sync"
-	Async           = "async"
+	Scheme       = "http"
+	SchemeSecure = "https"
+)
+const (
+	GitHub        = "github"
+	StackOverflow = "stackoverflow"
+)
+
+const (
+	Orm = "orm"
+	Sql = "sql"
+)
+
+const (
+	HTTPTransport  = "http"
+	KafkaTransport = "kafka"
+)
+
+const (
 	ShutdownTimeout = 5 * time.Second
 )
 
 type (
 	Serving struct {
-		ScrapperHost string `yaml:"scrapperhost" env:"SCRAPPER_HOST"`
-		BotHost      string `yaml:"bothost" env:"BOT_HOST"`
-		ScrapperPort string `yaml:"scrapperport" env:"SCRAPPER_PORT"`
-		BotPort      string `yaml:"botport" env:"BOT_PORT"`
+		ScrapperHost string `yaml:"scrapperHost" env:"SCRAPPER_HOST"`
+		BotHost      string `yaml:"botHost" env:"BOT_HOST"`
+		ScrapperPort string `yaml:"scrapperPort" env:"SCRAPPER_PORT"`
+		BotPort      string `yaml:"botPort" env:"BOT_PORT"`
 	}
 
 	Database struct {
@@ -58,31 +69,62 @@ type (
 	}
 
 	Notifier struct {
-		NumWorkers int `yaml:"numworkers" envDefault:"16"`
+		NumWorkers int `yaml:"numWorkers" envDefault:"16"`
 	}
 
 	Updater struct {
-		BatchSize  uint64 `yaml:"batchsize" envDefault:"200"`
-		NumWorkers int    `yaml:"numworkers" envDefault:"16"`
+		BatchSize  uint64 `yaml:"batchSize" envDefault:"200"`
+		NumWorkers int    `yaml:"numWorkers" envDefault:"16"`
 	}
 
-	Transport struct {
-		Mode            string `yaml:"mode" envDefault:"async"`
+	Delivery struct {
+		Transport       string `yaml:"transport" envDefault:"http"`
 		Topic           string `yaml:"topic" envDefault:"link.updates"`
-		DLQTopic        string `yaml:"dlqtopic" envDefault:"link.updates.dlq"`
-		ConsumerGroupID string `yaml:"groupid" envDefault:"link.updates.1"`
+		DLQTopic        string `yaml:"dlqTopic" envDefault:"link.updates.dlq"`
+		ConsumerGroupID string `yaml:"groupID" envDefault:"link.updates.1"`
+	}
+
+	Timeouts struct {
+		ClientOverall time.Duration `yaml:"clientOverall" envDefault:"10s"`
+		ServerRead    time.Duration `yaml:"serverRead" envDefault:"5s"`
+		ServerWrite   time.Duration `yaml:"serverWrite" envDefault:"10s"`
+		ServerIdle    time.Duration `yaml:"serverIdle" envDefault:"60s"`
+	}
+
+	RetryPolicy struct {
+		Attempts    uint          `yaml:"number" envDefault:"5"`
+		Delay       time.Duration `yaml:"delay" envDefault:"1s"`
+		StatusCodes []int         `yaml:"statusCodes"`
+	}
+
+	RateLimiter struct {
+		TTL          time.Duration `yaml:"TTL" envDefault:"1hr"`
+		MaxPerSecond float64       `yaml:"maxPerSecond" envDefault:"5.0"`
+		Burst        int           `yaml:"burst" envDefault:"10"`
+		Methods      []string      `yaml:"methods"`
+	}
+
+	CircuitBreakerPolicy struct {
+		MaxRequests      uint32        `yaml:"maxRequests" envDefault:"3"`
+		Interval         time.Duration `yaml:"interval" envDefault:"0s"`
+		Timeout          time.Duration `yaml:"timeout" envDefault:"10s"`
+		FailureThreshold uint32        `yaml:"failureThreshold" envDefault:"1"`
 	}
 )
 
 type Config struct {
-	Serving   Serving   `yaml:"serving"`
-	Database  Database  `yaml:"database"`
-	Brokers   Brokers   `yaml:"brokers"`
-	Cache     Cache     `yaml:"cache"`
-	Transport Transport `yaml:"transport"`
-	Updater   Updater   `yaml:"updater"`
-	Notifier  Notifier  `yaml:"notifier"`
-	Secrets   Secrets
+	Serving              Serving              `yaml:"serving"`
+	Database             Database             `yaml:"database"`
+	Brokers              Brokers              `yaml:"brokers"`
+	Cache                Cache                `yaml:"cache"`
+	Delivery             Delivery             `yaml:"delivery"`
+	Updater              Updater              `yaml:"updater"`
+	Notifier             Notifier             `yaml:"notifier"`
+	TimeoutPolicy        Timeouts             `yaml:"timeout"`
+	RetryPolicy          RetryPolicy          `yaml:"retry"`
+	RateLimiter          RateLimiter          `yaml:"rateLimiter"`
+	CircuitBreakerPolicy CircuitBreakerPolicy `yaml:"circuitBreaker"`
+	Secrets              Secrets
 }
 
 func New(name string) (*Config, error) {

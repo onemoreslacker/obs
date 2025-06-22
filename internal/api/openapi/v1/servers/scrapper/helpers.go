@@ -10,6 +10,10 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 
+	if code == http.StatusNoContent {
+		return
+	}
+
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		slog.Info(err.Error())
 	}
