@@ -37,7 +37,7 @@ func (a *API) PostTgChatId(w http.ResponseWriter, r *http.Request, chatID int64)
 		return
 	}
 
-	respondWithJSON(w, http.StatusNoContent, struct{}{})
+	respondWithJSON(w, http.StatusNoContent, http.NoBody)
 }
 
 //nolint:revive,stylecheck // Generated code cannot be edited.
@@ -49,7 +49,7 @@ func (a *API) GetTgChatId(w http.ResponseWriter, r *http.Request, chatID int64) 
 		return
 	}
 
-	respondWithJSON(w, http.StatusNoContent, struct{}{})
+	respondWithJSON(w, http.StatusNoContent, http.NoBody)
 }
 
 //nolint:revive,stylecheck // Generated code cannot be edited.
@@ -69,7 +69,7 @@ func (a *API) DeleteTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusNoContent, struct{}{})
+	respondWithJSON(w, http.StatusNoContent, http.NoBody)
 }
 
 func (a *API) PostLinks(w http.ResponseWriter, r *http.Request, params PostLinksParams) {

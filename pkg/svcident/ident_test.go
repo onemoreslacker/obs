@@ -1,10 +1,10 @@
-package pkg_test
+package svcident_test
 
 import (
 	"testing"
 
 	"github.com/es-debug/backend-academy-2024-go-template/config"
-	"github.com/es-debug/backend-academy-2024-go-template/pkg"
+	"github.com/es-debug/backend-academy-2024-go-template/pkg/svcident"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +33,7 @@ func TestServiceFromURL(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			actualService, err := pkg.ServiceFromURL(test.link)
+			actualService, err := svcident.FromLink(test.link)
 
 			if test.wantErr {
 				require.Error(t, err)

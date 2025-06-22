@@ -4,20 +4,21 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/service"
 	"github.com/segmentio/kafka-go"
 )
 
-type DLQHandler struct {
-	prod Producer
+type DLQPublisher struct {
+	producer service.Producer
 }
 
-func NewDLQHandler(prod Producer) *DLQHandler {
-	return &DLQHandler{
-		prod: prod,
+func NewDLQPublisher(producer service.Producer) *DLQPublisher {
+	return &DLQPublisher{
+		producer: producer,
 	}
 }
 
-func (d *DLQHandler) Send(ctx context.Context, msg kafka.Message, reason string) error {
+func (d *DLQPublisher) Send(ctx context.Context, msg kafka.Message, reason string) error {
 	dlqMsg := kafka.Message{
 		Key:   msg.Key,
 		Value: msg.Value,
@@ -27,8 +28,8 @@ func (d *DLQHandler) Send(ctx context.Context, msg kafka.Message, reason string)
 		}),
 	}
 
-	if err := d.prod.WriteMessages(ctx, dlqMsg); err != nil {
-		return fmt.Errorf("failed to write message to dlq: %w", err)
+	if err := d.producer.WriteMessages(ctx, dlqMsg); err != nil {
+		return fmt.Errorf("dlq publisher: failed to write message: %w", err)
 	}
 
 	return nil

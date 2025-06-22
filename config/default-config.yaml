@@ -1,25 +1,66 @@
 serving:
-    scrapperhost: scrapper
-    bothost: bot
-    scrapperport: 8080
-    botport: 8081
+    scrapperHost: scrapper
+    botHost: bot
+    scrapperPort: 8080
+    botPort: 8081
+    
 database:
     access: orm
+    
 brokers:
     - host: kafka1
       port: 19092
     - host: kafka2
       port: 19093
+      
 cache:
     host: redis
     port: 6379
-transport:
-    mode: async
+    
+delivery:
+    transport: kafka
     topic: link.updates
-    topicdlq: link.updates.dlq
-    groupid: link.updates.1
+    dlqTopic: link.updates.dlq
+    groupID: link.updates.1
+    
 notifier:
-    numworkers: 16
+    numWorkers: 16
+    
 updater:
-    batchsize: 200
-    numworkers: 16
+    batchSize: 200
+    numWorkers: 16
+    
+timeouts:
+    clientOverall: 10s
+    serverRead: 5s
+    serverWrite: 10s
+    serverIdle: 60s
+
+rateLimiter:
+    TTL: 1hr
+    maxPerSecond: 5.0
+    burst: 10
+    methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+    
+
+retry:
+    number: 5
+    delay: 1s
+    statusCodes:
+        - 408
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+
+circuitBreaker:
+    maxRequests: 3
+    interval: 0s
+    timeout: 10s
+    failureThreshold: 1
+    

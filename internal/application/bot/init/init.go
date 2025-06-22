@@ -8,20 +8,23 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/didip/tollbooth/v8/limiter"
 	"github.com/es-debug/backend-academy-2024-go-template/config"
 	sclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/scrapper"
 	botapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/bot"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/processor"
 	botservice "github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/service"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/bot/telebot"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/domain/models"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/consumers"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/producers"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/receiver"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/list"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/bot"
+	botserver "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/bot"
+	cbt "github.com/es-debug/backend-academy-2024-go-template/pkg/cbtransport"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
+	"github.com/sony/gobreaker/v2"
 )
 
 func BotCommands(tgc *tgbotapi.BotAPI) error {
@@ -63,13 +66,36 @@ func TelegramAPI(cfg *config.Config) (*tgbotapi.BotAPI, error) {
 	return tgc, nil
 }
 
-func ScrapperClient(cfg *config.Config) (sclient.ClientInterface, error) {
-	server := url.URL{
+func CircuitBreaker(cfg *config.Config) *gobreaker.CircuitBreaker[*http.Response] {
+	cbSettings := gobreaker.Settings{
+		MaxRequests: cfg.CircuitBreakerPolicy.MaxRequests,
+		Interval:    cfg.CircuitBreakerPolicy.Interval,
+		Timeout:     cfg.CircuitBreakerPolicy.Timeout,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.TotalFailures >= cfg.CircuitBreakerPolicy.FailureThreshold
+		},
+	}
+
+	return gobreaker.NewCircuitBreaker[*http.Response](cbSettings)
+}
+
+func RoundTripper(cb *gobreaker.CircuitBreaker[*http.Response], cfg *config.Config) http.RoundTripper {
+	return cbt.New(http.DefaultTransport, cb, &cbt.Config{
+		MaxAttempts:    cfg.RetryPolicy.Attempts,
+		RetryDelay:     cfg.RetryPolicy.Delay,
+		RetryableCodes: cfg.RetryPolicy.StatusCodes,
+	})
+}
+
+func ScrapperClient(transport http.RoundTripper, cfg *config.Config) (sclient.ClientInterface, error) {
+	serverConn := url.URL{
 		Scheme: config.Scheme,
 		Host:   net.JoinHostPort(cfg.Serving.ScrapperHost, cfg.Serving.ScrapperPort),
 	}
 
-	client, err := sclient.NewClient(server.String())
+	client, err := sclient.NewClient(serverConn.String(), sclient.WithHTTPClient(&http.Client{
+		Transport: transport,
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scrapper client: %w", err)
 	}
@@ -77,9 +103,13 @@ func ScrapperClient(cfg *config.Config) (sclient.ClientInterface, error) {
 	return client, nil
 }
 
-func BotServer(tgc *tgbotapi.BotAPI, cfg *config.Config) *http.Server {
+func BotServer(
+	tgc *tgbotapi.BotAPI,
+	cfg *config.Config,
+	lmt *limiter.Limiter,
+) *http.Server {
 	api := botapi.New(tgc)
-	return botserver.New(cfg.Serving, api)
+	return botserver.New(cfg, api, lmt)
 }
 
 func Telebot(client sclient.ClientInterface, tgc *tgbotapi.BotAPI, cache *list.Cache) *telebot.Bot {
@@ -90,22 +120,36 @@ func Deserializer() *models.Deserializer {
 	return models.NewDeserializer()
 }
 
-func KafkaWriter(cfg *config.Config) *kafka.Writer {
+func Limiter(cfg *config.Config) *limiter.Limiter {
+	lmt := limiter.New(&limiter.ExpirableOptions{DefaultExpirationTTL: cfg.RateLimiter.TTL})
+	lmt.SetMax(cfg.RateLimiter.MaxPerSecond)
+	lmt.SetBurst(cfg.RateLimiter.Burst)
+	lmt.SetMethods(cfg.RateLimiter.Methods)
+	lmt.SetIPLookup(
+		limiter.IPLookup{
+			Name:           "RemoteAddr",
+			IndexFromRight: 0,
+		},
+	)
+
+	return lmt
+}
+
+func KafkaDLQWriter(cfg *config.Config) *kafka.Writer {
 	addresses := make([]string, 0, len(cfg.Brokers))
 	for _, broker := range cfg.Brokers {
 		addresses = append(addresses, net.JoinHostPort(broker.Host, broker.Port))
 	}
 
 	return &kafka.Writer{
-		Addr:                   kafka.TCP(addresses...),
-		Topic:                  cfg.Transport.DLQTopic,
+		Topic:                  cfg.Delivery.DLQTopic,
 		Balancer:               &kafka.Hash{Hasher: adler32.New()},
 		Transport:              kafka.DefaultTransport,
 		AllowAutoTopicCreation: true,
 	}
 }
 
-func KafkaReader(cfg *config.Config) *kafka.Reader {
+func KafkaUpdateReader(cfg *config.Config) *kafka.Reader {
 	addresses := make([]string, 0, len(cfg.Brokers))
 	for _, broker := range cfg.Brokers {
 		addresses = append(addresses, net.JoinHostPort(broker.Host, broker.Port))
@@ -113,53 +157,45 @@ func KafkaReader(cfg *config.Config) *kafka.Reader {
 
 	return kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     addresses,
-		Topic:       cfg.Transport.Topic,
+		Topic:       cfg.Delivery.Topic,
 		StartOffset: kafka.FirstOffset,
-		GroupID:     cfg.Transport.ConsumerGroupID,
+		GroupID:     cfg.Delivery.ConsumerGroupID,
 	})
 }
 
-func DLQHandler(writer *kafka.Writer) *producers.DLQHandler {
-	return producers.NewDLQHandler(writer)
+func DLQPublisher(writer *kafka.Writer) *producers.DLQPublisher {
+	return producers.NewDLQPublisher(writer)
 }
 
-func AsyncReceiver(
-	reader *kafka.Reader,
-	dlqHandler *producers.DLQHandler,
-	tc *tgbotapi.BotAPI,
-	deserializer *models.Deserializer,
-) *consumers.UpdateReceiver {
-	return consumers.NewUpdateReceiver(reader, dlqHandler, tc, deserializer)
+func UpdateSubscriber(reader *kafka.Reader) *consumers.UpdateSubscriber {
+	return consumers.NewUpdateSubscriber(reader)
 }
 
-func UpdateReceiver(
-	srv *http.Server,
-	asyncReceiver *consumers.UpdateReceiver,
-	cfg *config.Config,
-) (receiver.UpdateReceiver, error) {
-	syncReceiver := receiver.NewSyncUpdateReceiver(srv)
-
-	rcv, err := receiver.New(syncReceiver, asyncReceiver, &cfg.Transport)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize update receiver: %w", err)
-	}
-
-	return rcv, nil
-}
-
-func Cache(cfg *config.Config) *list.Cache {
-	rdb := redis.NewClient(&redis.Options{
+func ListRDB(cfg *config.Config) *redis.Client {
+	return redis.NewClient(&redis.Options{
 		Addr:     net.JoinHostPort(cfg.Cache.Host, cfg.Cache.Port),
 		Password: "",
 		DB:       0,
 	})
+}
 
+func ListCache(rdb *redis.Client) *list.Cache {
 	return list.New(rdb)
 }
 
+func Processor(
+	telegramSender *tgbotapi.BotAPI,
+	deserializer *models.Deserializer,
+	dlqPublisher *producers.DLQPublisher,
+) *processor.Processor {
+	return processor.New(telegramSender, deserializer, dlqPublisher)
+}
+
 func BotService(
-	rcv receiver.UpdateReceiver,
+	srv *http.Server,
+	updateSubscriber *consumers.UpdateSubscriber,
+	processor *processor.Processor,
 	bot *telebot.Bot,
 ) *botservice.BotService {
-	return botservice.New(rcv, bot)
+	return botservice.New(srv, updateSubscriber, processor, bot)
 }

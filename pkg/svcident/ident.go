@@ -1,16 +1,13 @@
-package pkg
+package svcident
 
 import (
-	"errors"
 	"net/url"
 	"strings"
 
 	"github.com/es-debug/backend-academy-2024-go-template/config"
 )
 
-var ErrUnknownService = errors.New("unknown service")
-
-func ServiceFromURL(link string) (string, error) {
+func FromLink(link string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
 		return "", err

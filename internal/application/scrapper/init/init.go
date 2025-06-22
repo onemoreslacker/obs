@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/didip/tollbooth/v8/limiter"
 	"github.com/es-debug/backend-academy-2024-go-template/config"
 	botclient "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/clients/bot"
 	sapi "github.com/es-debug/backend-academy-2024-go-template/internal/api/openapi/v1/servers/scrapper"
+	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/fetcher"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/notifier"
 	ss "github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/service"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/application/scrapper/storage"
@@ -25,8 +27,7 @@ import (
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/subs"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/tags"
 	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/repository/txs"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/sender"
-	"github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/scrapper"
+	scrapperserver "github.com/es-debug/backend-academy-2024-go-template/internal/infrastructure/servers/scrapper"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
@@ -103,12 +104,12 @@ func BotClient(cfg *config.Config) (botclient.ClientInterface, error) {
 	return client, nil
 }
 
-func StackClient() clients.Client {
-	return clients.New(config.StackOverflow)
+func StackClient(cfg *config.Config) clients.Client {
+	return clients.New(config.StackOverflow, cfg)
 }
 
-func GitHubClient() clients.Client {
-	return clients.New(config.GitHub)
+func GitHubClient(cfg *config.Config) clients.Client {
+	return clients.New(config.GitHub, cfg)
 }
 
 func Scheduler() (gocron.Scheduler, error) {
@@ -124,28 +125,43 @@ func Serializer() *models.Serializer {
 	return models.NewSerializer()
 }
 
+func Limiter(cfg *config.Config) *limiter.Limiter {
+	lmt := limiter.New(&limiter.ExpirableOptions{DefaultExpirationTTL: cfg.RateLimiter.TTL})
+	lmt.SetMax(cfg.RateLimiter.MaxPerSecond)
+	lmt.SetBurst(cfg.RateLimiter.Burst)
+	lmt.SetMethods(cfg.RateLimiter.Methods)
+	lmt.SetIPLookup(
+		limiter.IPLookup{
+			Name:           "RemoteAddr",
+			IndexFromRight: 0,
+		},
+	)
+
+	return lmt
+}
+
 func Notifier(
 	storage *storage.Storage,
 	github clients.Client,
 	stack clients.Client,
-	sender *producers.UpdateSender,
+	updatePublisher *producers.UpdatePublisher,
 	sch gocron.Scheduler,
 	cfg *config.Config,
 ) *notifier.Notifier {
-	return notifier.New(storage, github, stack, sender, sch, &cfg.Notifier)
+	return notifier.New(storage, github, stack, updatePublisher, sch, &cfg.Notifier)
 }
 
-func Updater(
+func Fetcher(
 	storage *storage.Storage,
 	github clients.Client,
 	stack clients.Client,
 	sch gocron.Scheduler,
 	cfg *config.Config,
-) *updater.Updater {
-	return updater.New(storage, github, stack, sch, &cfg.Updater)
+) *fetcher.Fetcher {
+	return fetcher.New(storage, github, stack, sch, &cfg.Updater)
 }
 
-func KafkaWriter(cfg *config.Config) *kafka.Writer {
+func KafkaUpdateWriter(cfg *config.Config) *kafka.Writer {
 	addresses := make([]string, 0, len(cfg.Brokers))
 	for _, broker := range cfg.Brokers {
 		addresses = append(addresses, net.JoinHostPort(broker.Host, broker.Port))
@@ -153,42 +169,39 @@ func KafkaWriter(cfg *config.Config) *kafka.Writer {
 
 	return &kafka.Writer{
 		Addr:                   kafka.TCP(addresses...),
-		Topic:                  cfg.Transport.Topic,
+		Topic:                  cfg.Delivery.Topic,
 		Balancer:               &kafka.Hash{Hasher: adler32.New()},
 		Transport:              kafka.DefaultTransport,
 		AllowAutoTopicCreation: true,
 	}
 }
 
-func AsyncSender(writer *kafka.Writer, serializer *models.Serializer) *producers.UpdateSender {
-	return producers.NewUpdateSender(writer, serializer)
+func UpdatePublisher(writer *kafka.Writer, serializer *models.Serializer) *producers.UpdatePublisher {
+	return producers.NewUpdatePublisher(writer, serializer)
 }
 
-func UpdateSender(
-	client botclient.ClientInterface,
-	asyncSender *producers.UpdateSender,
+func Updater(
+	httpSender botclient.ClientInterface,
+	kafkaSender *producers.UpdatePublisher,
 	cfg *config.Config,
-) (sender.UpdateSender, error) {
-	syncSender := sender.NewSyncUpdateSender(client)
-
-	snd, err := sender.New(syncSender, asyncSender, &cfg.Transport)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize update receiver: %w", err)
-	}
-
-	return snd, nil
+) *updater.Updater {
+	return updater.New(httpSender, kafkaSender, cfg.Delivery.Transport)
 }
 
-func ScrapperServer(cfg *config.Config, storage *storage.Storage) *http.Server {
+func ScrapperServer(
+	cfg *config.Config,
+	storage *storage.Storage,
+	lmt *limiter.Limiter,
+) *http.Server {
 	api := sapi.New(storage)
-	return scrapperserver.New(cfg.Serving, api)
+	return scrapperserver.New(cfg, api, lmt)
 }
 
 func ScrapperService(
-	upd *updater.Updater,
-	nt *notifier.Notifier,
-	sender *producers.UpdateSender,
+	fetcher *fetcher.Fetcher,
+	notifier *notifier.Notifier,
+	updater *updater.Updater,
 	srv *http.Server,
 ) *ss.ScrapperService {
-	return ss.New(upd, nt, sender, srv)
+	return ss.New(fetcher, notifier, updater, srv)
 }
